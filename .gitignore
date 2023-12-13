@@ -1,0 +1,11 @@
+# Ignore directories
+results/
+expanded_test_data/
+
+# Ignore the ".nextflow" directory
+.nextflow/
+
+# Ignore files produced by nexflow
+*.nextflow.log*
+*html
+*trace*txt
