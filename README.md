@@ -74,7 +74,7 @@ Look for the `results` directory (the output) to appear in this same run directo
 
 ## Input
 This pipeline expects single-ended raw short-read sequencing as input. (ex. from Illumina) The reads are expected in `fastq` formated files with any one of the following extensions: `XXX.fastq` | `XXX.fastq.gz` | `XXX.fq` | `XXX.fq.gz`  
-The pipeline expects one file per sample. The fastq format is a common data standard who's details can be found [on wikipedia](https://en.wikipedia.org/wiki/FASTQ_format).
+The pipeline expects **one file** per sample. The fastq format is a common data standard who's details can be found [on wikipedia](https://en.wikipedia.org/wiki/FASTQ_format).
 A brief outline of that formatting is copied below for convenience.
 
     A FASTQ file has four line-separated fields per sequence:
@@ -123,7 +123,7 @@ For example, on one of the testing machines used in developing this pipeline the
 `docker://curlimages/curl:latest`
 `docker://staphb/fastqc:latest`  
 `docker://quay.io/biocontainers/multiqc:1.3--py35_2`  
-'docker://niemasd/minimap2_samtools:latest'    
+`docker://niemasd/minimap2_samtools:latest`   
 `docker://broadinstitute/picard:latest`  
 `docker://staphb/samtools:latest`  
 `docker://staphb/fastqc:latest`  
