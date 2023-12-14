@@ -34,15 +34,15 @@ results  : $params.outdir
 // Get reference genome
 process DOWNLOAD_HG38 {
     tag "Download Reference Genome hg38"
+    
     output:
     path "hg38.fa.gz"
 
     script:
     """
-    curl  https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.fa.gz > hg38.fa.gz
+    curl https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.fa.gz > hg38.fa.gz
     """
 }
-
 
 // Pre-alignment QC
 process FASTQC1 {
@@ -91,7 +91,7 @@ process MINIMAP2_ALIGNMENT {
 
     script:
     """
-    mkdir -p minimap2_output
+    mkdir -p "alignment_${sample_id}"
     minimap2 -a -x sr -Y -K 100M ${reference} ${reads} | samtools view -hbS | \
             samtools sort -m 2G -@ ${params.bwaThreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
     samtools index -@ ${params.bwaThreads} alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
@@ -107,16 +107,16 @@ process MARKDUP {
     tuple val(sample_id), path(bam)
 
     output:
-    tuple val(sample_id), path("markdup/${sample_id}.se.bwa.sorted.mkdup.bam"), 
-    path("markdup/${sample_id}.marked_duplicates.metrics.txt")
+    tuple val(sample_id), path("output_bams/${sample_id}.se.bwa.sorted.mkdup.bam"), 
+    path("output_bams/${sample_id}.marked_duplicates.metrics.txt")
     
     script:
     """
-    mkdir -p "markdup"
+    mkdir -p "output_bams"
     java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
       I=${bam} \
-      O=markdup/${sample_id}.se.bwa.sorted.mkdup.bam \
-      M=markdup/${sample_id}.marked_duplicates.metrics.txt
+      O=output_bams/${sample_id}.se.bwa.sorted.mkdup.bam \
+      M=output_bams/${sample_id}.marked_duplicates.metrics.txt
     """
 }
 
@@ -185,7 +185,6 @@ workflow {
     MULTIQC1(fastqc1_ch.collect())
 
     align_ch = MINIMAP2_ALIGNMENT(reads_ch, reference_genome_ch)
-    // align_ch = ALIGNMENT(reads_ch)
     markdup_ch = MARKDUP(align_ch)
     indcovflag_ch = INDCOVFLAG(markdup_ch)
     fastqc2_ch = FASTQC2(markdup_ch)
@@ -196,17 +195,6 @@ workflow {
     combined_ch = metrics.mix(flagstats, fastqc2_ch).collect()
 
     MULTIQC2(combined_ch)
-
-    // combined_ch.subscribe { data ->
-    //     // Process or print the combined data
-    //     println "Combined data: $data"
-    // }
-
-    // test = fastqc1_ch.collect()
-    // test.subscribe { data ->
-    //     // Process or print the combined data
-    //     println "Combined data: $data"
-    // }
 
 }
 
