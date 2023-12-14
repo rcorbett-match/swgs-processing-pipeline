@@ -31,18 +31,6 @@ reads    : $params.reads
 results  : $params.outdir
 """
 
-// Get reference genome
-process DOWNLOAD_HG38 {
-    tag "Download Reference Genome hg38"
-    output:
-    path "hg38.fa.gz"
-
-    script:
-    """
-    curl  https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.fa.gz > hg38.fa.gz
-    """
-}
-
 
 // Pre-alignment QC
 process FASTQC1 {
@@ -78,23 +66,27 @@ process MULTIQC1 {
     """
 }
 
-// minimap2 process
-process MINIMAP2_ALIGNMENT {
-    tag "MINIMAP2 ALIGNMENT on $sample_id"
-    
+// Alignment step
+process ALIGNMENT {
+    tag "FASTQC on $sample_id"
+
     input:
     tuple val(sample_id), path(reads)
-    path(reference)
 
     output:
-    tuple val(sample_id), path("alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam")
+    tuple val(sample_id), path("alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam") 
+    // path("alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam.bai")
 
     script:
     """
-    mkdir -p minimap2_output
-    minimap2 -a -x sr -Y -K 100M ${reference} ${reads} | samtools view -hbS | \
-            samtools sort -m 2G -@ ${params.bwaThreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    mkdir -p "alignment_${sample_id}"
+    bwa-mem2 mem -M -t ${params.bwaThreads} ${params.refFasta} \
+        ${reads} > alignment_${sample_id}/${sample_id}.se.bwa.sam
+    samtools view -h -b -S alignment_${sample_id}/${sample_id}.se.bwa.sam > alignment_${sample_id}/${sample_id}.se.bwa.bam
+    samtools sort -m 2G -@ ${params.bwaThreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam alignment_${sample_id}/${sample_id}.se.bwa.bam
     samtools index -@ ${params.bwaThreads} alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    rm alignment_${sample_id}/${sample_id}.se.bwa.sam
+    rm alignment_${sample_id}/${sample_id}.se.bwa.bam
     """
 }
 
@@ -180,12 +172,10 @@ workflow {
                 .fromPath( params.reads, checkIfExists: true, type: 'file' )
                 .map { file -> tuple(file.simpleName, file) }
 
-    reference_genome_ch = DOWNLOAD_HG38()
     fastqc1_ch = FASTQC1(reads_ch)
     MULTIQC1(fastqc1_ch.collect())
 
-    align_ch = MINIMAP2_ALIGNMENT(reads_ch, reference_genome_ch)
-    // align_ch = ALIGNMENT(reads_ch)
+    align_ch = ALIGNMENT(reads_ch)
     markdup_ch = MARKDUP(align_ch)
     indcovflag_ch = INDCOVFLAG(markdup_ch)
     fastqc2_ch = FASTQC2(markdup_ch)
@@ -197,16 +187,19 @@ workflow {
 
     MULTIQC2(combined_ch)
 
-    // combined_ch.subscribe { data ->
-    //     // Process or print the combined data
-    //     println "Combined data: $data"
-    // }
+    combined_ch.subscribe { data ->
+        // Process or print the combined data
+        println "Combined data: $data"
+    }
 
-    // test = fastqc1_ch.collect()
-    // test.subscribe { data ->
-    //     // Process or print the combined data
-    //     println "Combined data: $data"
-    // }
+    test = fastqc1_ch.collect()
+    test.subscribe { data ->
+        // Process or print the combined data
+        println "Combined data: $data"
+    }
+
+
+    // MULTIQC2(fastqc_ch.collect())
 
 }
 
