@@ -22,6 +22,10 @@ This pipeline will cover the following pre-processing steps:
 6. Quality assessment of the now aligned reads (FastQC)
 7. Aggregation of this second round of QC reports for each sample into a single report. (MultiQC)
 
+### Visual representation of pipeline execution (DAG)
+
+![](flowchart.png)
+
 ### Directories/Files in this repository
 
 -   `test_data` : Directory containing some test data that can be used with this pipeline. This test data is not published though yet and needs to be kept in a private repo for now.
@@ -32,20 +36,36 @@ This pipeline will cover the following pre-processing steps:
 -   `README.md`: This file!
 
 ### Input
-This pipeline expects single-ended raw short-read sequencing as input. (E.g. from Illumina)  
-Reads are expected in files with the following extensions: .fastq | .fastq.gz | .fq | .fq.gz  
-One file per sample.  
+This pipeline expects single-ended raw short-read sequencing as input. (ex. from Illumina) The reads are expected in `fastq` formatted files with any one of the following extensions: `XXX.fastq` | `XXX.fastq.gz` | `XXX.fq` | `XXX.fq.gz`  
+The pipeline expects one file per sample. The fastq format is a common data standard who's details can be found [on wikipedia](https://en.wikipedia.org/wiki/FASTQ_format).
+A brief outline of that formatting is copied below for convenience.
+
+    A FASTQ file has four line-separated fields per sequence:
+    Field 1 begins with a '@' character and is followed by a sequence identifier and an optional description (like a FASTA title line).
+    Field 2 is the raw sequence letters.
+    Field 3 begins with a '+' character and is optionally followed by the same sequence identifier (and any description) again.
+    Field 4 encodes the quality values for the sequence in Field 2, and must contain the same number of symbols as letters in the sequence.
+    A FASTQ file containing a single sequence might look like this:
+    
+    @SEQ_ID
+    GATTTGGGGTTCAAAGCAGTATCGATCAAATAGTAAATCCATTTGTTCAACTCACAGTTT
+    +
+    !''*((((***+))%%%++)(%%%%).1***-+*''))**55CCF>>>>>>CCCCCCC65
 
 ### Output
-Two QC reports - one pre-alignment, and one post-alignment.  
-A folder named `results` containing the aligned reads. One file per sample.  
+1. Two QC reports - one pre-alignment, and one post-alignment, both `.html` files.
+   Here is an image of what those files should look like when opened up in a browser.
+
+   
+2. A folder named `results` containing the aligned reads. One file per sample.
+   These files will be in the bam format.
+   More details on their formatting can be found on the [wikipedia page](https://en.wikipedia.org/wiki/Binary_Alignment_Map).
 
 ## Usage
 
 ### Software Installation
 
-In order to use this pipeline, a user must have `git` , `nextflow`, and `singularity` all properly installed with appropriate permissions for the user.  
-This pipeline does NOT require sudo access.  
+In order to use this pipeline, a user must have `git` , `nextflow`, and `singularity` all properly installed with appropriate permissions for the user. This pipeline does NOT require sudo access.  
 
 If any of the above is not yet installed please follow their respective guides:  
 For [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)  
@@ -76,10 +96,6 @@ may become...
 Then save your changes, and execute the pipeline using the `nextflow run` command as seen above.
 
 Look for the `results` directory (the output) to appear in this same run directory after pipeline execution.  
-
-### Pipeline Execution Visualization
-
-![](flowchart.png)
 
 ## Extras
 
