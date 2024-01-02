@@ -174,11 +174,33 @@ process MULTIQC2 {
     """
 }
 
+// Call Copy-Numbers
+process CN_QDNA1 {
+    publishDir params.outdir, mode:'copy'
+
+    input:
+    path(script)
+    val(binsize)
+
+    output:
+    tuple val(sample_id), path("relative_cn")
+
+    script:
+    """
+    mkdir -p "relative_cns/qdnaseq"
+    Rscript $script $binsize relative_cns/qdnaseq 
+    """
+}
+
 workflow {
 
     reads_ch = Channel
                 .fromPath( params.reads, checkIfExists: true, type: 'file' )
                 .map { file -> tuple(file.simpleName, file) }
+
+    binsizes_ch = Channel.from(params.binsizes)
+    qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R"
+    wisex_script_ch = file("$projectDir/scripts/runQDNAseq.R"
 
     reference_genome_ch = DOWNLOAD_HG38()
     fastqc1_ch = FASTQC1(reads_ch)
@@ -188,6 +210,14 @@ workflow {
     markdup_ch = MARKDUP(align_ch)
     indcovflag_ch = INDCOVFLAG(markdup_ch)
     fastqc2_ch = FASTQC2(markdup_ch)
+
+    if (params.runqdnaseq) {
+        qdnaseq_cns_ch = CN_QDNA1(qdnaseq_script_ch, binsizes_ch)
+    }
+
+    if (params.runwisex) {
+        wisex_cns_ch = CN_WX1(wisex_script_ch, binsizes_ch)
+    }
 
     // Extract the file path from each tuple in the channel
     metrics = markdup_ch.map { tuple -> tuple[2] }
