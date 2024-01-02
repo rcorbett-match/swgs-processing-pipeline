@@ -69,12 +69,13 @@ process MULTIQC1 {
     path '*'
  
     output:
-    path "pre_alignment_multiqc_report.html"
+    path "reports/pre_alignment_multiqc_report.html"
  
     script:
     """
+    mkdir -p reports
     multiqc .
-    mv multiqc_report.html pre_alignment_multiqc_report.html
+    mv multiqc_report.html reports/pre_alignment_multiqc_report.html
     """
 }
 
@@ -93,8 +94,8 @@ process MINIMAP2_ALIGNMENT {
     """
     mkdir -p "alignment_${sample_id}"
     minimap2 -a -x sr -Y -K 100M ${reference} ${reads} | samtools view -hbS | \
-            samtools sort -m 2G -@ ${params.bwaThreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
-    samtools index -@ ${params.bwaThreads} alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
+            samtools sort -m 2G -@ ${params.nthreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    samtools index -@ ${params.nthreads} alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
     """
 }
 
@@ -108,15 +109,16 @@ process MARKDUP {
 
     output:
     tuple val(sample_id), path("output_bams/${sample_id}.se.bwa.sorted.mkdup.bam"), 
-    path("output_bams/${sample_id}.marked_duplicates.metrics.txt")
+    path("metrics_files/${sample_id}.marked_duplicates.metrics.txt")
     
     script:
     """
     mkdir -p "output_bams"
+    mkdir -p "metrics_files"
     java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
       I=${bam} \
       O=output_bams/${sample_id}.se.bwa.sorted.mkdup.bam \
-      M=output_bams/${sample_id}.marked_duplicates.metrics.txt
+      M=metrics_files/${sample_id}.marked_duplicates.metrics.txt
     """
 }
 
@@ -128,15 +130,15 @@ process INDCOVFLAG {
     tuple val(sample_id), path(bam), path(metrics)
 
     output:
-    tuple val(sample_id), path("indcovflag/${sample_id}.se.coverageTable.tsv"), 
-    path("indcovflag/${sample_id}.flagstat.txt")
+    tuple val(sample_id), path("metrics_files/${sample_id}.se.coverageTable.tsv"), 
+    path("metrics_files/${sample_id}.flagstat.txt")
     
     script:
     """
-    mkdir -p indcovflag
-    samtools index -@ 24 ${bam}
-    samtools coverage ${bam} > indcovflag/${sample_id}.se.coverageTable.tsv
-    samtools flagstat -@ ${params.bwaThreads} ${bam} > indcovflag/${sample_id}.flagstat.txt
+    mkdir -p metrics_files
+    samtools index -@ ${params.nthreads} ${bam}
+    samtools coverage ${bam} > metrics_files/${sample_id}.se.coverageTable.tsv
+    samtools flagstat -@ ${params.nthreads} ${bam} > metrics_files/${sample_id}.flagstat.txt
     """
 }
 
@@ -165,30 +167,35 @@ process MULTIQC2 {
     path '*'
  
     output:
-    path "final_multiqc_report.html"
+    path "reports/final_multiqc_report.html"
  
     script:
     """
+    mkdir -p reports
     multiqc .
-    mv multiqc_report.html final_multiqc_report.html
+    mv multiqc_report.html reports/final_multiqc_report.html
     """
 }
 
-// Call Copy-Numbers
+// Call Copy-Numbers using QDNAseq
 process CN_QDNA1 {
     publishDir params.outdir, mode:'copy'
 
     input:
     path(script)
     val(binsize)
+    path(binannos_dir)
+    val(bams)
 
     output:
-    tuple val(sample_id), path("relative_cn")
+    path("relative_cns/qdnaseq")
 
     script:
     """
     mkdir -p "relative_cns/qdnaseq"
-    Rscript $script $binsize relative_cns/qdnaseq 
+    printf '%s\n' "${bams.join('\n')}" > bamfileslist.txt
+    Rscript ${script} ${binsize} ${params.nthreads} relative_cns/qdnaseq bamfileslist.txt
+    rm bamfileslist.txt
     """
 }
 
@@ -199,8 +206,8 @@ workflow {
                 .map { file -> tuple(file.simpleName, file) }
 
     binsizes_ch = Channel.from(params.binsizes)
-    qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R"
-    wisex_script_ch = file("$projectDir/scripts/runQDNAseq.R"
+    qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R")
+    wisex_script_ch = file("$projectDir/scripts/runQDNAseq.R")
 
     reference_genome_ch = DOWNLOAD_HG38()
     fastqc1_ch = FASTQC1(reads_ch)
@@ -212,7 +219,8 @@ workflow {
     fastqc2_ch = FASTQC2(markdup_ch)
 
     if (params.runqdnaseq) {
-        qdnaseq_cns_ch = CN_QDNA1(qdnaseq_script_ch, binsizes_ch)
+        bamlist = markdup_ch.map { tuple -> tuple[1] }
+        CN_QDNA1(qdnaseq_script_ch, binsizes_ch, params.binannos, bamlist.collect())
     }
 
     if (params.runwisex) {

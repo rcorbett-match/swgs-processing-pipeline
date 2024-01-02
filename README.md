@@ -25,7 +25,7 @@ This pipeline will cover the following pre-processing steps:
 
 ### Visual representation of pipeline execution (DAG)
 
-![](flowchart.png)
+![](images/flowchart.png)
 
 ### Directories/Files in this repository
 
@@ -99,7 +99,7 @@ It's contents will include:
    `final_multiqc_report.html`  
    both `.html` files.  
    Here is an image of what those files should look like when opened up in a browser.  
-![](multiqc_report.png)
+![](images/multiqc_report.png)
    
    For detailed insutructions on how to interpret the plots generated in the MultiQC reports there are many great resources online.  
    [Here is one.](https://hbctraining.github.io/Intro-to-rnaseq-hpc-salmon/lessons/qc_fastqc_assessment.html)
@@ -115,12 +115,12 @@ It's contents will include:
 In order for this pipeline to work as expected, the software installations must be done properly. 
 This is especially important for singularity and nextflow (they have many dependencies and are compplex pieces of software).  
 For example, on one of the testing machines used in developing this pipeline the following commands were needed for singularity to run as expected:  
-`source /cvmfs/soft.computecanada.ca/config/profile/bash.sh`
-`module load apptainer`
-`module load nextflow`
+`source /cvmfs/soft.computecanada.ca/config/profile/bash.sh`  
+`module load apptainer`  
+`module load nextflow`  
 
-### List of containers used by singularity in this workflow
-`docker://curlimages/curl:latest`
+### List of containers used by singularity in this workflow  
+`docker://curlimages/curl:latest`  
 `docker://staphb/fastqc:latest`  
 `docker://quay.io/biocontainers/multiqc:1.3--py35_2`  
 `docker://niemasd/minimap2_samtools:latest`   
