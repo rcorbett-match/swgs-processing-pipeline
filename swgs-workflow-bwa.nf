@@ -31,16 +31,45 @@ reads    : $params.reads
 results  : $params.outdir
 """
 
+
 // Get reference genome
-process DOWNLOAD_HG38 {
-    tag "Download Reference Genome hg38"
+process DOWNLOAD_MM10 {
+    errorStrategy 'retry', maxRetries: 2
+    tag "Download Reference Genome mm10"
     
     output:
-    path "hg38.fa.gz"
+    path "reference_genome/mm10.fa.gz"
 
     script:
     """
-    curl https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.fa.gz > hg38.fa.gz
+    mkdir -p reference_genome
+    curl https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.fa.gz > reference_genome/mm10.fa.gz
+    """
+}
+process DOWNLOAD_HG19 {
+    errorStrategy 'retry', maxRetries: 2
+    tag "Download Reference Genome hg19"
+    
+    output:
+    path "reference_genome/hg19.fa.gz"
+
+    script:
+    """
+    mkdir -p reference_genome
+    curl https://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz > reference_genome/hg19.fa.gz
+    """
+}
+process DOWNLOAD_HG38 {
+    errorStrategy 'retry', maxRetries: 2
+    tag "Download Reference Genome hg38"
+    
+    output:
+    path "reference_genome/hg38.fa.gz"
+
+    script:
+    """
+    mkdir -p reference_genome
+    curl https://hgdownload.cse.ucsc.edu/goldenpath/hg38/bigZips/hg38.fa.gz > reference_genome/hg38.fa.gz
     """
 }
 
@@ -201,15 +230,31 @@ process CN_QDNA1 {
 
 workflow {
 
-    reads_ch = Channel
-                .fromPath( params.reads, checkIfExists: true, type: 'file' )
-                .map { file -> tuple(file.simpleName, file) }
-
+    // Make some channels for the needed params, reads files, and scripts
     binsizes_ch = Channel.from(params.binsizes)
     qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R")
     wisex_script_ch = file("$projectDir/scripts/runQDNAseq.R")
+    if (params.pairedend) {
+        Channel
+            .fromFilePairs(params.reads, checkIfExists: true)
+            .set { reads_ch }
+    } else {
+        reads_ch = Channel
+                .fromPath(params.reads, checkIfExists: true, type: 'file')
+                .map { file -> tuple(file.simpleName, file) }
+    } 
 
-    reference_genome_ch = DOWNLOAD_HG38()
+    // Get the reference genome sorted
+    if (params.genome == 'hg19') {
+        reference_genome_ch = DOWNLOAD_HG19()
+    } else if ( params.genome == 'hg38') {
+        reference_genome_ch = DOWNLOAD_HG38()
+    } else if (params.genome == 'mm10') {
+        reference_genome_ch = DOWNLOAD_MM10()
+    } else {
+        fail "Reference genome is not recognized, please correct input string."
+    }
+    
     fastqc1_ch = FASTQC1(reads_ch)
     MULTIQC1(fastqc1_ch.collect())
 
