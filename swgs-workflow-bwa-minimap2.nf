@@ -127,9 +127,9 @@ process INDEX_BWAREF {
     """
 }
 
-// Trim reads using Trimmomatic
-process TRIMMOMATIC {
-    tag "TRIMMOMATIC on $sample_id"
+// Trim reads using Trimmomatic (paired-end)
+process TRIMMOMATIC_PE {
+    tag "TRIMMOMATIC_PE on $sample_id"
     
     input:
     tuple val(sample_id), path(reads)
@@ -139,7 +139,6 @@ process TRIMMOMATIC {
     path("trimmed/${sample_id}.{f,r}.unpaired.fastq")
 
     script:
-    if (params.pairedend)
         """
         mkdir trimmed
         trimmomatic PE -threads ${params.nthreads} -phred33 $reads \
@@ -147,19 +146,29 @@ process TRIMMOMATIC {
             trimmed/${sample_id}.f.unpaired.fastq \
             trimmed/${sample_id}.r.paired.fastq \
             trimmed/${sample_id}.r.unpaired.fastq \
-            ILLUMINACLIP:TruSeq3-PE.fa:2:30:10:2:keepBothReads \
+            ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:keepBothReads \
             LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
         """
-    else
+}
+
+// Trim reads using Trimmomatic (single-end)
+process TRIMMOMATIC_SE {
+    tag "TRIMMOMATIC_SE on $sample_id"
+    
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    tuple val(sample_id), path("trimmed/${sample_id}.se.fastq")
+
+    script:
         """
         mkdir trimmed
         trimmomatic SE -threads ${params.nthreads} -phred33 $reads \
-            trimmed/${sample_id}.f.paired.fastq \
-            trimmed/${sample_id}.f.unpaired.fastq \
-            ILLUMINACLIP:TruSeq3-SE:2:30:10:2 \
+            trimmed/${sample_id}.se.fastq \
+            ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:30:10:2 \
             LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
         """
-
 }
 
 // minimap2 alignment process
@@ -177,59 +186,148 @@ process MINIMAP2_ALIGNMENT {
     """
     mkdir -p "alignment_${sample_id}"
     minimap2 -a -x sr -Y -K 100M -t ${params.nthreads} ${reference} ${reads} | samtools view -hbS | \
-            samtools sort -m 2G -@ ${params.nthreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
+        samtools sort -m 2G -@ ${params.nthreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
     samtools index -@ ${params.nthreads} alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
     """
 }
 
-// minimap2 alignment process
-process BWAMEM2_ALIGNMENT {
-    tag "BWA-MEM 2 ALIGNMENT on $sample_id"
+// bwa alignment process (pe)
+process BWAMEM2_ALIGNMENT_PE {
+    tag "BWA-MEM 2 ALIGNMENT (pe) on $sample_id"
     
     input:
-    tuple val(sample_id), path(reads), path(unpaired_reads)
+    tuple val(sample_id), path(paired_reads), path(unpaired_reads)
     // path(reference)
     path(bwa_reference)
 
     output:
-    tuple val(sample_id), path("alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam")
+    tuple val(sample_id), path("alignment_${sample_id}/${sample_id}.pe.bwa.sam"),
+    path("alignment_${sample_id}/${sample_id}.up.bwa.sam")
 
     script:
-    bwaList = bwa_reference.collect()
-    fa_path = bwaList[4]                           // Access individual elements from the list
+    // bwaList = bwa_reference.collect()
+    // fa_path = bwaList[4]                           // Access individual elements from the list
     unpairedList = unpaired_reads.collect()
     forward_unpaired = unpairedList[0]
     """
     mkdir -p "alignment_${sample_id}"
-    bwa-mem2 mem -M -t ${params.nthreads} ${fa_path} ${reads} | samtools view -hbS | \
-            samtools sort -m 2G -@ ${params.nthreads} -o alignment_${sample_id}/${sample_id}.bwa.sorted.bam
-    samtools index -@ ${params.nthreads} alignment_${sample_id}/${sample_id}.bwa.sorted.bam
+    cp -a /projects/molonc/scratch/dma/swgs-processing-pipeline/test_data/ref/. . # TODO: FIX THIS
+    bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${paired_reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.pe.bwa.sam 
 
-    if [ ${params.pairedend} ] && ![ ${params.useboth} ]
-    then
-            bwa-mem2 mem -M -t ${params.nthreads} ${fa_path} ${forward_unpaired} | samtools view -hbS | \
-                samtools sort -m 2G -@ ${params.nthreads} -o alignment_${sample_id}/${sample_id}.up.bwa.sorted.bam
-            samtools index -@ ${params.nthreads} alignment_${sample_id}/${sample_id}.up.bwa.sorted.bam
+    bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${forward_unpaired} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.up.bwa.sam
+    """      
+}//.after(INDEX_BWAREF)
 
-            # Grab forward strand from P.E. post_alignment
-            samtools view -F 16 -o alignment_${sample_id}/${sample_id}.pe.f.bwa.sorted.bam \
-                alignment_${sample_id}/${sample_id}.bwa.sorted.bam
-            samtools merge -f -@ ${params.nthreads} alignment_${sample_id}/${sample_id}.se.merged.bam \
-                alignment_${sample_id}/${sample_id}.up.bwa.sorted.bam \
-                alignment_${sample_id}/${sample_id}.pe.f.bwa.sorted.bam
-            # Re-Sort now merged BAM
-            samtools sort -m 2G -@ ${params.nthreads} -o alignment_${sample_id}/${sample_id}.se.merged.sorted.bam \
-                alignment_${sample_id}/${sample_id}.se.merged.bam
-            samtools index -@ ${params.nthreads} alignment_${sample_id}/${sample_id}.se.merged.sorted.bam
-            rm alignment_${sample_id}/${sample_id}.bwa.sorted.bam
-            mv alignment_${sample_id}/${sample_id}.se.merged.sorted.bam alignment_${sample_id}/${sample_id}.bwa.sorted.bam
-    fi
+// bwa alignment process (se)
+process BWAMEM2_ALIGNMENT_SE {
+    tag "BWA-MEM 2 ALIGNMENT (se) on $sample_id"
+    
+    input:
+    tuple val(sample_id), path(reads)
+    // path(reference)
+    path(bwa_reference)
+
+    output:
+    tuple val(sample_id), path("alignment_${sample_id}/${sample_id}.se.bwa.sam")
+
+    script:
+    // bwaList = bwa_reference.collect()
+    // fa_path = bwaList[4]                           // Access individual elements from the list
+    """
+    mkdir -p "alignment_${sample_id}"
+    cp -a /projects/molonc/scratch/dma/swgs-processing-pipeline/test_data/ref/. .
+    bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.se.bwa.sam
     """
 }//.after(INDEX_BWAREF)
 
-// Mark duplicate reads using picardtools
-process MARKDUP {
-    tag "MARKDUP on $sample_id"
+// sorting and indexing bam (pe)
+process SORT_INDEX_PE {
+    tag "SORTING AND INDEXING (pe) on $sample_id"
+    
+    input:
+    tuple val(sample_id), path(sam_pe), path(sam_up) 
+
+    output:
+    tuple val(sample_id), path("sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam"), path("sorting_${sample_id}/${sample_id}.se.merged.sorted.bam")
+
+    script:
+    """
+    mkdir -p "sorting_${sample_id}"
+
+    samtools view -hbS ${sample_id}.pe.bwa.sam | \
+        samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
+    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
+
+    samtools view -hbS ${sample_id}.up.bwa.sam | \
+        samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam
+    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam
+
+    # Grab forward strand from P.E. post_alignment
+    samtools view -F 16 -o sorting_${sample_id}/${sample_id}.pe.f.bwa.sorted.bam \
+        sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
+    samtools merge -f -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.se.merged.bam \
+        sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam \
+        sorting_${sample_id}/${sample_id}.pe.f.bwa.sorted.bam
+    # Re-Sort now merged BAM
+    samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.se.merged.sorted.bam \
+        sorting_${sample_id}/${sample_id}.se.merged.bam
+    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.se.merged.sorted.bam
+    """
+}//.after(INDEX_BWAREF)
+
+// sorting and indexing bam (se)
+process SORT_INDEX_SE {
+    tag "SORTING AND INDEXING (se) on $sample_id"
+    
+    input:
+    tuple val(sample_id), path(sam)
+
+    output:
+    tuple val(sample_id), path("sorting_${sample_id}/${sample_id}.se.bwa.sorted.bam")
+
+    script:
+    """
+    mkdir -p "sorting_${sample_id}"
+    samtools view -hbS ${sample_id}.se.bwa.sam | \
+        samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    """
+}//.after(INDEX_BWAREF)
+
+// Mark duplicate reads using picardtools (pe)
+process MARKDUP_PE {
+    tag "MARKDUP (pe) on $sample_id"
+    publishDir params.outdir, mode:'copy'
+    
+    input:
+    tuple val(sample_id), path(bam_pe), path(bam_se)
+
+    output:
+    tuple val(sample_id), path("output_bams/${sample_id}_pe.pe.bwa.sorted.mkdup.bam"), 
+    path("output_bams/${sample_id}_se.se.merged.sorted.mkdup.bam"), 
+    path("metrics_files/${sample_id}_pe.marked_duplicates.metrics.txt"),
+    path("metrics_files/${sample_id}_se.marked_duplicates.metrics.txt")
+    
+    script:
+    """
+    mkdir -p "output_bams"
+    mkdir -p "metrics_files"
+
+    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+      -I ${bam_pe} \
+      -O output_bams/${sample_id}_pe.pe.bwa.sorted.mkdup.bam \
+      -M metrics_files/${sample_id}_pe.marked_duplicates.metrics.txt
+
+    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+      -I ${bam_se} \
+      -O output_bams/${sample_id}_se.se.merged.sorted.mkdup.bam \
+      -M metrics_files/${sample_id}_se.marked_duplicates.metrics.txt
+    """
+}
+
+// Mark duplicate reads using picardtools (se)
+process MARKDUP_SE {
+    tag "MARKDUP (se) on $sample_id"
     publishDir params.outdir, mode:'copy'
     
     input:
@@ -250,9 +348,37 @@ process MARKDUP {
     """
 }
 
-// Calculating a few samtools alignment metrics
-process INDCOVFLAG {
-    tag "Re-index and sort on $sample_id"
+// Calculating a few samtools alignment metrics (pe)
+process INDCOVFLAG_PE {
+    tag "Re-index and sort (pe) on $sample_id"
+    
+    input:
+    tuple val(sample_id), path(bam_pe), path(bam_se), path(metrics_pe), path(metrics_se)
+
+    output:
+    tuple val(sample_id), 
+    path("metrics_files/${sample_id}_pe.coverageTable.tsv"), 
+    path("metrics_files/${sample_id}_pe.flagstat.txt"), 
+    path("metrics_files/${sample_id}_se.coverageTable.tsv"), 
+    path("metrics_files/${sample_id}_se.flagstat.txt")
+    
+    script:
+    """
+    mkdir -p metrics_files
+
+    samtools index -@ ${params.nthreads} ${bam_pe}
+    samtools coverage ${bam_pe} > metrics_files/${sample_id}_pe.coverageTable.tsv
+    samtools flagstat -@ ${params.nthreads} ${bam_pe} > metrics_files/${sample_id}_pe.flagstat.txt
+
+    samtools index -@ ${params.nthreads} ${bam_se}
+    samtools coverage ${bam_se} > metrics_files/${sample_id}_se.coverageTable.tsv
+    samtools flagstat -@ ${params.nthreads} ${bam_se} > metrics_files/${sample_id}_se.flagstat.txt
+    """
+}
+
+// Calculating a few samtools alignment metrics (se)
+process INDCOVFLAG_SE {
+    tag "Re-index and sort (se) on $sample_id"
     
     input:
     tuple val(sample_id), path(bam), path(metrics)
@@ -270,9 +396,26 @@ process INDCOVFLAG {
     """
 }
 
-// Post-alignment QC
-process FASTQC2 {
-    tag "FASTQC on $sample_id"
+// Post-alignment QC (pe)
+process FASTQC2_PE {
+    tag "FASTQC (pe) on $sample_id"
+
+    input:
+    tuple val(sample_id), path(bam_pe), path(bam_se), path(metrics_pe), path(metrics_se)
+ 
+    output:
+    path "post_alignment_fastqc_logs_${sample_id}"
+ 
+    script:
+    """
+    mkdir -p post_alignment_fastqc_logs_${sample_id}
+    fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id}
+    """
+}
+
+// Post-alignment QC (se)
+process FASTQC2_SE {
+    tag "FASTQC (se) on $sample_id"
 
     input:
     tuple val(sample_id), path(bam), path(metrics)
@@ -293,6 +436,7 @@ process MULTIQC2 {
 
     input:
     path '*'
+    // path (multiqc_config)
  
     output:
     path "reports/final_multiqc_report.html"
@@ -300,7 +444,7 @@ process MULTIQC2 {
     script:
     """
     mkdir -p reports
-    multiqc .
+    multiqc --cl_config "extra_fn_clean_exts: ." . # TODO: WHY DOESN'T CONFIG FILE WORK
     mv multiqc_report.html reports/final_multiqc_report.html
     """
 }
@@ -336,23 +480,25 @@ workflow {
     
     if (params.pairedend) {
         reads_ch = Channel
-            .fromFilePairs(params.reads, checkIfExists: true)
+            .fromFilePairs(params.reads, checkIfExists: true, size:-1) { file -> 
+                file.name.split('(_1|_2)')[0]
+            }
     } else {
         reads_ch = Channel
                 .fromPath(params.reads, checkIfExists: true, type: 'file')
                 .map { file -> tuple(file.simpleName, file) }
-    } 
+    }
 
     // Get the reference genome
-    if (params.genome == 'hg19') {
-        reference_genome_ch = DOWNLOAD_HG19()
-    } else if ( params.genome == 'hg38') {
-        reference_genome_ch = DOWNLOAD_HG38()
-    } else if (params.genome == 'mm10') {
-        reference_genome_ch = DOWNLOAD_MM10()
-    } else {
-        fail "Reference genome is not recognized, please correct input string."
-    }
+    // if (params.genome == 'hg19') {
+    //     reference_genome_ch = DOWNLOAD_HG19()
+    // } else if ( params.genome == 'hg38') {
+    //     reference_genome_ch = DOWNLOAD_HG38()
+    // } else if (params.genome == 'mm10') {
+    //     reference_genome_ch = DOWNLOAD_MM10()
+    // } else {
+    //     fail "Reference genome is not recognized, please correct input string."
+    // }
     
     // reads_ch.view()
     fastqc1_ch = FASTQC1(reads_ch)
@@ -360,39 +506,61 @@ workflow {
     MULTIQC1(fastqc1_ch.collect())
 
     if (params.pairedend) {
-        trimmed_ch = TRIMMOMATIC(reads_ch)
+        trimmed_ch = TRIMMOMATIC_PE(reads_ch)
     } else {
-        trimmed_ch = TRIMMOMATIC(reads_ch)
+        trimmed_ch = TRIMMOMATIC_SE(reads_ch)
     }
 
     if (params.aligner == 'bwamem2') {
-        bwa_reference_genome_ch = INDEX_BWAREF(reference_genome_ch)
-        bwa_reference_genome_ch.view()
-        align_ch = BWAMEM2_ALIGNMENT(trimmed_ch, bwa_reference_genome_ch)
+        // bwa_reference_genome_ch = INDEX_BWAREF(reference_genome_ch)
+        // bwa_reference_genome_ch.view()
+         if (params.pairedend) {
+            align_ch = BWAMEM2_ALIGNMENT_PE(trimmed_ch, params.ref_path)
+         } else {
+            align_ch = BWAMEM2_ALIGNMENT_SE(trimmed_ch, params.ref_path)
+         }
     } else if (params.aligner == 'minimap2') {
         align_ch = MINIMAP2_ALIGNMENT(trimmed_ch, reference_genome_ch)
     } else {
         fail "Aligner is not recognized, please correct input string. Options are 'bwamem2' or 'minimap2'."
     }
 
-    markdup_ch = MARKDUP(align_ch)
-    indcovflag_ch = INDCOVFLAG(markdup_ch)
-    fastqc2_ch = FASTQC2(markdup_ch)
+    if (params.pairedend) {
+        sort_ch = SORT_INDEX_PE(align_ch)
+        markdup_ch = MARKDUP_PE(sort_ch)
+        indcovflag_ch = INDCOVFLAG_PE(markdup_ch)
+        fastqc2_ch = FASTQC2_PE(markdup_ch)
+    } else {
+        sort_ch = SORT_INDEX_SE(align_ch)
+        markdup_ch = MARKDUP_SE(sort_ch)
+        indcovflag_ch = INDCOVFLAG_SE(markdup_ch)
+        fastqc2_ch = FASTQC2_SE(markdup_ch)
+    }
 
     if (params.runqdnaseq) {
-        bamlist = markdup_ch.map { tuple -> tuple[1] }
+        if (params.pairedend) {
+            bamlist = markdup_ch.map { tuple -> [tuple[1], tuple[2]] }
+        } else {
+            bamlist = markdup_ch.map { tuple -> tuple[1] }
+        }
         CN_QDNA1(qdnaseq_script_ch, binsizes_ch, params.binannos, bamlist.collect())
     }
 
-    if (params.runwisex) {
-        wisex_cns_ch = CN_WX1(wisex_script_ch, binsizes_ch)
-    }
+    // if (params.runwisex) {
+    //     wisex_cns_ch = CN_WX1(wisex_script_ch, binsizes_ch)
+    // }
 
     // Extract the file path from each tuple in the channel
-    metrics = markdup_ch.map { tuple -> tuple[2] }
-    flagstats = indcovflag_ch.map { tuple -> tuple[2] }
+    if (params.pairedend) {
+        metrics = markdup_ch.map { tuple -> [tuple[3], tuple[4]] }
+        flagstats = indcovflag_ch.map { tuple -> [tuple[2], tuple[4]] }
+    } else {
+        metrics = markdup_ch.map { tuple -> tuple[2] }
+        flagstats = indcovflag_ch.map { tuple -> tuple[2] }
+    }
     combined_ch = metrics.mix(flagstats, fastqc2_ch).collect()
 
-    MULTIQC2(combined_ch)
+    // multiqc_config_ch = Channel.fromPath(params.multiqc_config, checkIfExists: true, type: 'file') // TODO: TEST THIS
 
+    MULTIQC2(combined_ch)
 }

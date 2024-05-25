@@ -9,3 +9,8 @@ expanded_test_data/
 *.nextflow.log*
 *html
 *trace*txt
+
+work/
+
+test_data/ref
+test_data/paired
