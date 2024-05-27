@@ -211,7 +211,7 @@ process BWAMEM2_ALIGNMENT_PE {
     forward_unpaired = unpairedList[0]
     """
     mkdir -p "alignment_${sample_id}"
-    cp -a /projects/molonc/scratch/dma/swgs-processing-pipeline/test_data/ref/. . # TODO: FIX THIS
+    cp -a ${params.ref_dir} .
     bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${paired_reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.pe.bwa.sam 
 
     bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${forward_unpaired} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.up.bwa.sam
@@ -235,7 +235,7 @@ process BWAMEM2_ALIGNMENT_SE {
     // fa_path = bwaList[4]                           // Access individual elements from the list
     """
     mkdir -p "alignment_${sample_id}"
-    cp -a /projects/molonc/scratch/dma/swgs-processing-pipeline/test_data/ref/. .
+    cp -a ${params.ref_dir} .
     bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.se.bwa.sam
     """
 }//.after(INDEX_BWAREF)
