@@ -26,7 +26,7 @@ log.info """\
 
 S H A L L O W   W G S   C N - C A L L I N G  -  N F    v 2.1 
 ================================
-genome   : $params.refFasta
+genome   : $params.ref_path
 reads    : $params.reads
 results  : $params.outdir
 """
