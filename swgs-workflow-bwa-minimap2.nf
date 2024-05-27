@@ -436,7 +436,7 @@ process MULTIQC2 {
 
     input:
     path '*'
-    // path (multiqc_config)
+    path (multiqc_config)
  
     output:
     path "reports/final_multiqc_report.html"
@@ -444,7 +444,7 @@ process MULTIQC2 {
     script:
     """
     mkdir -p reports
-    multiqc --cl_config "extra_fn_clean_exts: ." . # TODO: WHY DOESN'T CONFIG FILE WORK
+    multiqc .
     mv multiqc_report.html reports/final_multiqc_report.html
     """
 }
@@ -560,7 +560,7 @@ workflow {
     }
     combined_ch = metrics.mix(flagstats, fastqc2_ch).collect()
 
-    // multiqc_config_ch = Channel.fromPath(params.multiqc_config, checkIfExists: true, type: 'file') // TODO: TEST THIS
+    multiqc_config_ch = Channel.fromPath(params.multiqc_config, checkIfExists: true, type: 'file')
 
-    MULTIQC2(combined_ch)
+    MULTIQC2(combined_ch, multiqc_config_ch)
 }
