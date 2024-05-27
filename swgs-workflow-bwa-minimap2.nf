@@ -197,7 +197,6 @@ process BWAMEM2_ALIGNMENT_PE {
     
     input:
     tuple val(sample_id), path(paired_reads), path(unpaired_reads)
-    // path(reference)
     path(bwa_reference)
 
     output:
@@ -211,7 +210,6 @@ process BWAMEM2_ALIGNMENT_PE {
     forward_unpaired = unpairedList[0]
     """
     mkdir -p "alignment_${sample_id}"
-    cp -a ${params.ref_dir} .
     bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${paired_reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.pe.bwa.sam 
 
     bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${forward_unpaired} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.up.bwa.sam
@@ -224,7 +222,6 @@ process BWAMEM2_ALIGNMENT_SE {
     
     input:
     tuple val(sample_id), path(reads)
-    // path(reference)
     path(bwa_reference)
 
     output:
@@ -235,7 +232,6 @@ process BWAMEM2_ALIGNMENT_SE {
     // fa_path = bwaList[4]                           // Access individual elements from the list
     """
     mkdir -p "alignment_${sample_id}"
-    cp -a ${params.ref_dir} .
     bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.se.bwa.sam
     """
 }//.after(INDEX_BWAREF)
@@ -514,11 +510,11 @@ workflow {
     if (params.aligner == 'bwamem2') {
         // bwa_reference_genome_ch = INDEX_BWAREF(reference_genome_ch)
         // bwa_reference_genome_ch.view()
-         if (params.pairedend) {
+        if (params.pairedend) {
             align_ch = BWAMEM2_ALIGNMENT_PE(trimmed_ch, params.ref_path)
-         } else {
+        } else {
             align_ch = BWAMEM2_ALIGNMENT_SE(trimmed_ch, params.ref_path)
-         }
+        }
     } else if (params.aligner == 'minimap2') {
         align_ch = MINIMAP2_ALIGNMENT(trimmed_ch, reference_genome_ch)
     } else {
