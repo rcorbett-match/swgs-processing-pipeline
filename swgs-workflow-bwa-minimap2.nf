@@ -463,6 +463,7 @@ process CN_QDNA1 {
 
     output:
     path("relative_cns/qdnaseq/${binsize}kb")
+    val(binsize)
 
     script:
     """
@@ -526,6 +527,7 @@ process CN_WX1 {
 
     output:
     path("relative_cns/wisecondorx/${binsize}kb")
+    val(binsize)
 
     script:
     """
@@ -559,16 +561,58 @@ process CN_WX1 {
     """
 }
 
+// Scale relative copy-number to absolute copy-number from QDNAseq output
+process RCN_TO_ACN_QDNA {
+    publishDir params.outdir, mode:'copy'
+
+    input:
+    path(script)
+    path(rcn_dir)
+    val(binsize)
+    val(type)
+
+    output:
+    path("absolute_cns/${type}/${binsize}kb")
+
+    script:
+    """
+    mkdir -p "absolute_cns/${type}/${binsize}kb"
+    Rscript ${script} ${params.nthreads} ${type} ${rcn_dir} ${params.genome} absolute_cns/${type}/${binsize}kb
+    """
+}
+
+// Scale relative copy-number to absolute copy-number from WX output
+process RCN_TO_ACN_WX {
+    publishDir params.outdir, mode:'copy'
+
+    input:
+    path(script)
+    path(rcn_dir)
+    val(binsize)
+    val(type)
+
+    output:
+    path("absolute_cns/${type}/${binsize}kb")
+
+    script:
+    """
+    mkdir wx_files
+    cp ${rcn_dir}/*/*.txt wx_files && cp ${rcn_dir}/*/*.bed wx_files
+    mkdir -p "absolute_cns/${type}/${binsize}kb"
+    Rscript ${script} ${params.nthreads} ${type} wx_files ${params.genome} absolute_cns/${type}/${binsize}kb
+    """
+}
+
 workflow {
     // Make some channels for the needed params, reads files, and scripts
     binsizes_ch = Channel.from(params.binsizes)
     qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R")
-    wisex_script_ch = file("$projectDir/scripts/runQDNAseq.R")
+    acn_script_ch = file("$projectDir/scripts/runACN.R")
     
     if (params.pairedend) {
         reads_ch = Channel
             .fromFilePairs(params.reads, checkIfExists: true, size:-1) { file -> 
-                file.name.split('(_1|_2)')[0]
+                file.name.split('(_1_|_2_)')[0]
             }
     } else {
         reads_ch = Channel
@@ -630,7 +674,8 @@ workflow {
         } else {
             bamlist = markdup_ch.map { tuple -> tuple[1] }
         }
-        CN_QDNA1(qdnaseq_script_ch, binsizes_ch, params.binannos, bamlist.collect())
+        qdna_ch = CN_QDNA1(qdnaseq_script_ch, binsizes_ch, params.binannos, bamlist.collect())
+        RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch, 'qdnaseq')
     }
 
     if (params.runwisex) {
@@ -641,9 +686,11 @@ workflow {
         }
         if (params.wx_newref) {
             wx_ref_ch = WX_REF(params.wx_normals, binsizes_ch, params.wx_nbams)
-            CN_WX1(wx_ref_ch, bamlist.collect())
+            wx_ch = CN_WX1(wx_ref_ch, bamlist.collect())
+            RCN_TO_ACN_WX(acn_script_ch, wx_ch, 'wisecondorx')
         } else {
-            CN_WX1(binsizes_ch, params.wx_refs, bamlist.collect())
+            wx_ch  = CN_WX1(binsizes_ch, params.wx_refs, bamlist.collect())
+            RCN_TO_ACN_WX(acn_script_ch, wx_ch, 'wisecondorx')
         }
     }
 
