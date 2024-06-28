@@ -469,7 +469,7 @@ process CN_QDNA1 {
     """
     mkdir -p "relative_cns/qdnaseq/${binsize}kb"
     printf '%s\n' "${bams.join('\n')}" > bamfileslist.txt
-    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${binsize}kb bamfileslist.txt
+    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${binsize}kb bamfileslist.txt ${binannos_dir}/*${binsize}kb*.rds
     rm bamfileslist.txt
     """
 }

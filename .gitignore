@@ -12,5 +12,4 @@ expanded_test_data/
 
 work/
 
-test_data/ref
-test_data/paired
+test_data

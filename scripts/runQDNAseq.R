@@ -20,6 +20,7 @@ if (length(args) < 1) {
     nthreads <- args[2]
     output_path <- args[3]
     bamfileslist <- args[4]
+    bin_annos <- args[5]
 }
 
 future::plan("multisession", workers=nthreads)
@@ -39,7 +40,7 @@ extract_sample_names <- function(paths) {
 sample_names <- extract_sample_names(bamfiles)
 
 # Declare paths
-bin_annos <- paste0('1000genomes_PE150_bin_annotations/hg19_bins_150bp_', binsize, '_SE.rds')
+# bin_annos <- paste0('1000genomes_PE150_bin_annotations/hg19_bins_150bp_', binsize, '_SE.rds')
 
 # Load Bin Annotations
 print(getwd())

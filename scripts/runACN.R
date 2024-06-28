@@ -48,7 +48,7 @@ if (type == "wisecondorx") {
     solutions <- utanos::FindRascalSolutions(cnobj)
     
     # scaling to ACN
-    results <- utanos::CalculateACNs(cnobj, "mad", solutions, return_sols = TRUE)
+    results <- utanos::CalculateACNs(cnobj, "mad", solutions, return_sols = TRUE, return_S4 = TRUE)
     
     results[["all_solutions"]] <- solutions
     saveRDS(results, glue::glue("{out_path}/qdnaseq_{i}_acn_{binsize/1000}kb.rds"))
