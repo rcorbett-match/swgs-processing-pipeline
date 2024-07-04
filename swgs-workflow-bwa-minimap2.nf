@@ -299,28 +299,27 @@ process MARKDUP_PE {
     tuple val(sample_id), path(bam_pe), path(bam_se)
 
     output:
-    tuple val(sample_id), path("output_bams/${sample_id}_pe.pe.bwa.sorted.mkdup.bam"), 
-    path("output_bams/${sample_id}_pe.pe.bwa.sorted.mkdup.bai"), 
-    path("output_bams/${sample_id}_se.se.merged.sorted.mkdup.bam"), 
-    path("output_bams/${sample_id}_se.se.merged.sorted.mkdup.bai"), 
-    path("metrics_files/${sample_id}_pe.marked_duplicates.metrics.txt"),
-    path("metrics_files/${sample_id}_se.marked_duplicates.metrics.txt")
+    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt"),
+    path("processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt")
     
     script:
     """
-    mkdir -p "output_bams"
-    mkdir -p "metrics_files"
+    mkdir -p "processing_outputs/${sample_id}"
 
     java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
       -I ${bam_pe} \
-      -O output_bams/${sample_id}_pe.pe.bwa.sorted.mkdup.bam \
-      -M metrics_files/${sample_id}_pe.marked_duplicates.metrics.txt \
+      -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
+      -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
       --CREATE_INDEX true
 
     java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
       -I ${bam_se} \
-      -O output_bams/${sample_id}_se.se.merged.sorted.mkdup.bam \
-      -M metrics_files/${sample_id}_se.marked_duplicates.metrics.txt \
+      -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
+      -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
       --CREATE_INDEX true
     """
 }
@@ -334,9 +333,9 @@ process MARKDUP_SE {
     tuple val(sample_id), path(bam)
 
     output:
-    tuple val(sample_id), path("output_bams/${sample_id}.se.bwa.sorted.mkdup.bam"), 
-    path("output_bams/${sample_id}.se.bwa.sorted.mkdup.bai"), 
-    path("metrics_files/${sample_id}.marked_duplicates.metrics.txt")
+    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt")
     
     script:
     """
@@ -344,8 +343,8 @@ process MARKDUP_SE {
     mkdir -p "metrics_files"
     java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
       I=${bam} \
-      O=output_bams/${sample_id}.se.bwa.sorted.mkdup.bam \
-      M=metrics_files/${sample_id}.marked_duplicates.metrics.txt \
+      O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
+      M=processing_outputs/${sample_id}/${sample_id}.marked_duplicates.metrics.txt \
       CREATE_INDEX=true
     """
 }
@@ -359,22 +358,22 @@ process INDCOVFLAG_PE {
 
     output:
     tuple val(sample_id), 
-    path("metrics_files/${sample_id}_pe.coverageTable.tsv"), 
-    path("metrics_files/${sample_id}_pe.flagstat.txt"), 
-    path("metrics_files/${sample_id}_se.coverageTable.tsv"), 
-    path("metrics_files/${sample_id}_se.flagstat.txt")
+    path("metrics_files/${sample_id}.pe.coverageTable.tsv"), 
+    path("metrics_files/${sample_id}.pe.flagstat.txt"), 
+    path("metrics_files/${sample_id}.se.coverageTable.tsv"), 
+    path("metrics_files/${sample_id}.se.flagstat.txt")
     
     script:
     """
     mkdir -p metrics_files
 
     samtools index -@ ${params.nthreads} ${bam_pe}
-    samtools coverage ${bam_pe} > metrics_files/${sample_id}_pe.coverageTable.tsv
-    samtools flagstat -@ ${params.nthreads} ${bam_pe} > metrics_files/${sample_id}_pe.flagstat.txt
+    samtools coverage ${bam_pe} > metrics_files/${sample_id}.pe.coverageTable.tsv
+    samtools flagstat -@ ${params.nthreads} ${bam_pe} > metrics_files/${sample_id}.pe.flagstat.txt
 
     samtools index -@ ${params.nthreads} ${bam_se}
-    samtools coverage ${bam_se} > metrics_files/${sample_id}_se.coverageTable.tsv
-    samtools flagstat -@ ${params.nthreads} ${bam_se} > metrics_files/${sample_id}_se.flagstat.txt
+    samtools coverage ${bam_se} > metrics_files/${sample_id}.se.coverageTable.tsv
+    samtools flagstat -@ ${params.nthreads} ${bam_se} > metrics_files/${sample_id}.se.flagstat.txt
     """
 }
 
@@ -387,7 +386,7 @@ process INDCOVFLAG_SE {
 
     output:
     tuple val(sample_id), path("metrics_files/${sample_id}.se.coverageTable.tsv"), 
-    path("metrics_files/${sample_id}.flagstat.txt")
+    path("metrics_files/${sample_id}.se.flagstat.txt")
     
     script:
     """
@@ -457,19 +456,19 @@ process CN_QDNA1 {
 
     input:
     path(script)
-    val(binsize)
     path(binannos_dir)
-    val(bams)
+    tuple val(binsize), val(bam_type), val(bams)
 
     output:
-    path("relative_cns/qdnaseq/${binsize}kb")
+    path("relative_cns/qdnaseq/${bam_type}/${binsize}kb")
     val(binsize)
+    val(bam_type)
 
     script:
     """
-    mkdir -p "relative_cns/qdnaseq/${binsize}kb"
+    mkdir -p "relative_cns/qdnaseq/${bam_type}/${binsize}kb"
     printf '%s\n' "${bams.join('\n')}" > bamfileslist.txt
-    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${binsize}kb bamfileslist.txt ${binannos_dir}/*${binsize}kb*.rds
+    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${bam_type}/${binsize}kb bamfileslist.txt ${binannos_dir}/*${binsize}kb*.rds
     rm bamfileslist.txt
     """
 }
@@ -482,8 +481,7 @@ process WX_REF {
     path(bams)
 
     output:
-    val(binsize)
-    path("wx_references")
+    tuple val(binsize), path("wx_references")
 
     script: 
     """
@@ -521,17 +519,16 @@ process CN_WX1 {
     publishDir params.outdir, mode:'copy'
 
     input:
-    val(binsize)
-    path(wx_ref)
-    val(bams)
+    tuple val(binsize), path(wx_ref), val(bam_type), val(bams)
 
     output:
-    path("relative_cns/wisecondorx/${binsize}kb")
+    path("relative_cns/wisecondorx/${bam_type}/${binsize}kb")
     val(binsize)
+    val(bam_type)
 
     script:
     """
-    mkdir -p "relative_cns/wisecondorx/${binsize}kb"
+    mkdir -p "relative_cns/wisecondorx/${bam_type}/${binsize}kb"
     mkdir -p converts
     printf '%s\n' "${bams.join('\n')}" > bamfileslist.txt
 
@@ -539,7 +536,7 @@ process CN_WX1 {
 
         SAMPLE=\$(basename "\${LINE%%.*}")
 
-        WisecondorX convert \$LINE converts/\${SAMPLE}.npz --binsize ${binsize}000
+        WisecondorX convert \$LINE converts/\${SAMPLE}.${bam_type}.npz --binsize ${binsize}000
 
     done < bamfileslist.txt
 
@@ -547,12 +544,12 @@ process CN_WX1 {
 
         SAMPLE=\$(basename "\${FILE%%.*}")
 
-        mkdir -p relative_cns/wisecondorx/${binsize}kb/\${SAMPLE}
+        mkdir -p relative_cns/wisecondorx/${bam_type}/${binsize}kb/\${SAMPLE}
 
         if [[ \$FILE == *"pe."* ]]; then
-            WisecondorX predict \$FILE ${wx_ref}/*${binsize}kb*.pe.npz relative_cns/wisecondorx/${binsize}kb/\${SAMPLE}/\${SAMPLE} --gender F --plot --bed
+            WisecondorX predict \$FILE ${wx_ref}/*${binsize}kb*.pe.npz relative_cns/wisecondorx/${bam_type}/${binsize}kb/\${SAMPLE}/\${SAMPLE} --gender F --plot --bed
         else
-            WisecondorX predict \$FILE ${wx_ref}/*${binsize}kb*.se.npz relative_cns/wisecondorx/${binsize}kb/\${SAMPLE}/\${SAMPLE} --gender F --plot --bed
+            WisecondorX predict \$FILE ${wx_ref}/*${binsize}kb*.se.npz relative_cns/wisecondorx/${bam_type}/${binsize}kb/\${SAMPLE}/\${SAMPLE} --gender F --plot --bed
         fi
 
     done
@@ -569,15 +566,16 @@ process RCN_TO_ACN_QDNA {
     path(script)
     path(rcn_dir)
     val(binsize)
+    val(bam_type)
     val(type)
 
     output:
-    path("absolute_cns/${type}/${binsize}kb")
+    path("absolute_cns/${type}/${bam_type}/${binsize}kb")
 
     script:
     """
-    mkdir -p "absolute_cns/${type}/${binsize}kb"
-    Rscript ${script} ${params.nthreads} ${type} ${rcn_dir} ${params.genome} absolute_cns/${type}/${binsize}kb
+    mkdir -p "absolute_cns/${type}/${bam_type}/${binsize}kb"
+    Rscript ${script} ${params.nthreads} ${type} ${rcn_dir} ${params.genome} absolute_cns/${type}/${bam_type}/${binsize}kb
     """
 }
 
@@ -589,17 +587,18 @@ process RCN_TO_ACN_WX {
     path(script)
     path(rcn_dir)
     val(binsize)
+    val(bam_type)
     val(type)
 
     output:
-    path("absolute_cns/${type}/${binsize}kb")
+    path("absolute_cns/${type}/${bam_type}/${binsize}kb")
 
     script:
     """
     mkdir wx_files
     cp ${rcn_dir}/*/*.txt wx_files && cp ${rcn_dir}/*/*.bed wx_files
-    mkdir -p "absolute_cns/${type}/${binsize}kb"
-    Rscript ${script} ${params.nthreads} ${type} wx_files ${params.genome} absolute_cns/${type}/${binsize}kb
+    mkdir -p "absolute_cns/${type}/${bam_type}/${binsize}kb"
+    Rscript ${script} ${params.nthreads} ${type} wx_files ${params.genome} absolute_cns/${type}/${bam_type}/${binsize}kb
     """
 }
 
@@ -670,26 +669,29 @@ workflow {
 
     if (params.runqdnaseq) {
         if (params.pairedend) {
-            bamlist = markdup_ch.map { tuple -> [tuple[1], tuple[3]] }
+            bamlist = markdup_ch.map { tuple -> [["pe", tuple[1]], ["se", tuple[3]]] }.flatMap().groupTuple()
         } else {
-            bamlist = markdup_ch.map { tuple -> tuple[1] }
+            bamlist = markdup_ch.map { tuple -> ["se", tuple[1]] }.groupTuple()
         }
-        qdna_ch = CN_QDNA1(qdnaseq_script_ch, binsizes_ch, params.binannos, bamlist.collect())
+        bams_ch = binsizes_ch.combine(bamlist)
+        qdna_ch = CN_QDNA1(qdnaseq_script_ch, params.binannos, bams_ch)
         RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch, 'qdnaseq')
     }
 
     if (params.runwisex) {
         if (params.pairedend) {
-            bamlist = markdup_ch.map { tuple -> [tuple[1], tuple[3]] }
+            bamlist = markdup_ch.map { tuple -> [["pe", tuple[1]], ["se", tuple[3]]] }.flatMap().groupTuple()
         } else {
-            bamlist = markdup_ch.map { tuple -> tuple[1] }
+            bamlist = markdup_ch.map { tuple -> ["se", tuple[1]] }.groupTuple()
         }
         if (params.wx_newref) {
             wx_ref_ch = WX_REF(params.wx_normals, binsizes_ch, params.wx_nbams)
-            wx_ch = CN_WX1(wx_ref_ch, bamlist.collect())
+            bams_ch = wx_ref_ch.combine(bamlist)
+            wx_ch = CN_WX1(bams_ch)
             RCN_TO_ACN_WX(acn_script_ch, wx_ch, 'wisecondorx')
         } else {
-            wx_ch  = CN_WX1(binsizes_ch, params.wx_refs, bamlist.collect())
+            bams_ch = binsizes_ch.combine(Channel.of(params.wx_refs)).combine(bamlist)
+            wx_ch  = CN_WX1(bams_ch)
             RCN_TO_ACN_WX(acn_script_ch, wx_ch, 'wisecondorx')
         }
     }
