@@ -7,6 +7,7 @@ suppressPackageStartupMessages({
   library(stringr)
   library(future)
   library(CGHcall)
+  library(glue)
 })
 
 # Access command-line arguments
@@ -77,6 +78,19 @@ saveRDS(copyNumbersSegmented, file = file.path(output_path, paste0(binsize, "_no
 saveRDS(cgh_obj, file = file.path(output_path, paste0(binsize, "_noY_gl_rCN.rds")))
 saveRDS(glBins, file = file.path(output_path, paste0(binsize, "_noY_bins_rCN.rds")))
 
+# Generate plots
+write_plot_rcn <- function(sample, path, obj) {
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+  png(paste0(path, "/", sample, ".png"), width = 2000, height = 1200, pointsize = 16)
+  QDNAseq::plot(obj[,sample])
+  dev.off()
+}
+
+sample_names <- sampleNames(copyNumbersSegmented)
+print(glue("generating plots for {binsize} noY"))
+lapply(sample_names, write_plot_rcn, path = glue("{output_path}/rcn_plots/noY"), obj = copyNumbersSegmented)
+
 
 #### Without X-chromosome
 #### QDNAseq processing and CN calling
@@ -102,3 +116,7 @@ copyNumbersSegmented@phenoData@data[["name"]] <- word(copyNumbersSegmented@pheno
 saveRDS(copyNumbersSegmented, file = file.path(output_path, paste0(binsize, "_noXY_copyNumbersSegmented.rds")))
 saveRDS(cgh_obj, file = file.path(output_path, paste0(binsize, "_noXY_gl_rCN.rds")))
 saveRDS(glBins, file = file.path(output_path, paste0(binsize, "_noXY_bins_rCN.rds")))
+
+# Generate plots
+print(glue("generating plots for {binsize} noXY"))
+lapply(sample_names, write_plot_rcn, path = glue("{output_path}/rcn_plots/noXY"), obj = copyNumbersSegmented)

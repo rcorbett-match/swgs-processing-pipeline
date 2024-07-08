@@ -141,13 +141,24 @@ process TRIMMOMATIC_PE {
     script:
         """
         mkdir trimmed
-        trimmomatic PE -threads ${params.nthreads} -phred33 $reads \
-            trimmed/${sample_id}.f.paired.fastq \
-            trimmed/${sample_id}.f.unpaired.fastq \
-            trimmed/${sample_id}.r.paired.fastq \
-            trimmed/${sample_id}.r.unpaired.fastq \
-            ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:keepBothReads \
-            LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
+
+        if [ ${params.crop50} ]; then
+            trimmomatic PE -threads ${params.nthreads} -phred33 $reads \
+                trimmed/${sample_id}.f.paired.fastq \
+                trimmed/${sample_id}.f.unpaired.fastq \
+                trimmed/${sample_id}.r.paired.fastq \
+                trimmed/${sample_id}.r.unpaired.fastq \
+                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:keepBothReads \
+                LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5 CROP:50
+        else
+            trimmomatic PE -threads ${params.nthreads} -phred33 $reads \
+                trimmed/${sample_id}.f.paired.fastq \
+                trimmed/${sample_id}.f.unpaired.fastq \
+                trimmed/${sample_id}.r.paired.fastq \
+                trimmed/${sample_id}.r.unpaired.fastq \
+                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:keepBothReads \
+                LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
+        fi
         """
 }
 
@@ -164,10 +175,18 @@ process TRIMMOMATIC_SE {
     script:
         """
         mkdir trimmed
-        trimmomatic SE -threads ${params.nthreads} -phred33 $reads \
-            trimmed/${sample_id}.se.fastq \
-            ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:30:10:2 \
-            LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
+
+        if [ ${params.crop50} ]; then
+            trimmomatic SE -threads ${params.nthreads} -phred33 $reads \
+                trimmed/${sample_id}.se.fastq \
+                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:30:10:2 \
+                LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5 CROP:50
+        else 
+            trimmomatic SE -threads ${params.nthreads} -phred33 $reads \
+                trimmed/${sample_id}.se.fastq \
+                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:30:10:2 \
+                LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
+        fi
         """
 }
 
