@@ -358,12 +358,11 @@ process MARKDUP_SE {
     
     script:
     """
-    mkdir -p "output_bams"
-    mkdir -p "metrics_files"
+    mkdir -p "processing_outputs/${sample_id}"
     java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
       I=${bam} \
       O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
-      M=processing_outputs/${sample_id}/${sample_id}.marked_duplicates.metrics.txt \
+      M=processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
       CREATE_INDEX=true
     """
 }
@@ -412,7 +411,7 @@ process INDCOVFLAG_SE {
     mkdir -p metrics_files
     samtools index -@ ${params.nthreads} ${bam}
     samtools coverage ${bam} > metrics_files/${sample_id}.se.coverageTable.tsv
-    samtools flagstat -@ ${params.nthreads} ${bam} > metrics_files/${sample_id}.flagstat.txt
+    samtools flagstat -@ ${params.nthreads} ${bam} > metrics_files/${sample_id}.se.flagstat.txt
     """
 }
 
@@ -586,19 +585,18 @@ process RCN_TO_ACN_QDNA {
     path(rcn_dir)
     val(binsize)
     val(bam_type)
-    val(type)
 
     output:
-    path("absolute_cns/${type}/${bam_type}/${binsize}kb")
+    path("absolute_cns/qdnaseq/${bam_type}/${binsize}kb")
 
     script:
     """
-    mkdir -p "absolute_cns/${type}/${bam_type}/${binsize}kb"
-    Rscript ${script} ${params.nthreads} ${type} ${rcn_dir} ${params.genome} absolute_cns/${type}/${bam_type}/${binsize}kb
+    mkdir -p "absolute_cns/qdnaseq/${bam_type}/${binsize}kb"
+    Rscript ${script} ${params.nthreads} qdnaseq ${rcn_dir} ${params.genome} absolute_cns/qdnaseq/${bam_type}/${binsize}kb
     """
 }
 
-// Scale relative copy-number to absolute copy-number from WX output
+// Scale relative copy-number to absolute copy-number from WisecondorX output
 process RCN_TO_ACN_WX {
     publishDir params.outdir, mode:'copy'
 
@@ -607,17 +605,16 @@ process RCN_TO_ACN_WX {
     path(rcn_dir)
     val(binsize)
     val(bam_type)
-    val(type)
 
     output:
-    path("absolute_cns/${type}/${bam_type}/${binsize}kb")
+    path("absolute_cns/wisecondorx/${bam_type}/${binsize}kb")
 
     script:
     """
     mkdir wx_files
     cp ${rcn_dir}/*/*.txt wx_files && cp ${rcn_dir}/*/*.bed wx_files
-    mkdir -p "absolute_cns/${type}/${bam_type}/${binsize}kb"
-    Rscript ${script} ${params.nthreads} ${type} wx_files ${params.genome} absolute_cns/${type}/${bam_type}/${binsize}kb
+    mkdir -p "absolute_cns/wisecondorx/${bam_type}/${binsize}kb"
+    Rscript ${script} ${params.nthreads} wx wx_files ${params.genome} absolute_cns/wisecondorx/${bam_type}/${binsize}kb
     """
 }
 
@@ -694,7 +691,7 @@ workflow {
         }
         bams_ch = binsizes_ch.combine(bamlist)
         qdna_ch = CN_QDNA1(qdnaseq_script_ch, params.binannos, bams_ch)
-        RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch, 'qdnaseq')
+        RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
     }
 
     if (params.runwisex) {
@@ -707,11 +704,11 @@ workflow {
             wx_ref_ch = WX_REF(params.wx_normals, binsizes_ch, params.wx_nbams)
             bams_ch = wx_ref_ch.combine(bamlist)
             wx_ch = CN_WX1(bams_ch)
-            RCN_TO_ACN_WX(acn_script_ch, wx_ch, 'wisecondorx')
+            RCN_TO_ACN_WX(acn_script_ch, wx_ch)
         } else {
             bams_ch = binsizes_ch.combine(Channel.of(params.wx_refs)).combine(bamlist)
             wx_ch  = CN_WX1(bams_ch)
-            RCN_TO_ACN_WX(acn_script_ch, wx_ch, 'wisecondorx')
+            RCN_TO_ACN_WX(acn_script_ch, wx_ch)
         }
     }
 

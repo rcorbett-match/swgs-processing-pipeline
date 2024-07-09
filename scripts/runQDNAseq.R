@@ -80,7 +80,7 @@ saveRDS(glBins, file = file.path(output_path, paste0(binsize, "_noY_bins_rCN.rds
 
 # Generate plots
 write_plot_rcn <- function(sample, path, obj) {
-  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  dir.create(path, showWarnings = FALSE, recursive = TRUE)
 
   png(paste0(path, "/", sample, ".png"), width = 2000, height = 1200, pointsize = 16)
   QDNAseq::plot(obj[,sample])
