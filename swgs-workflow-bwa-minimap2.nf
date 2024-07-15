@@ -142,7 +142,7 @@ process TRIMMOMATIC_PE {
         """
         mkdir trimmed
 
-        if [ ${params.crop50} ]; then
+        if [ ${params.crop50} = true ]; then
             trimmomatic PE -threads ${params.nthreads} -phred33 $reads \
                 trimmed/${sample_id}.f.paired.fastq \
                 trimmed/${sample_id}.f.unpaired.fastq \
@@ -176,7 +176,7 @@ process TRIMMOMATIC_SE {
         """
         mkdir trimmed
 
-        if [ ${params.crop50} ]; then
+        if [ ${params.crop50} = true ]; then
             trimmomatic SE -threads ${params.nthreads} -phred33 $reads \
                 trimmed/${sample_id}.se.fastq \
                 ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:30:10:2 \
@@ -505,8 +505,8 @@ process WX_REF {
     """
         mkdir -p wx_references
 
-        if [ ${params.wx_newref_frombam} ]; then
-            mkdir -p converts
+        if [ ${params.wx_newref_frombam} = true ]; then
+            mkdir -p converts 
             for FILE in ${bams}/*.bam; do
 
                 SAMPLE=\$(basename "\${FILE%%.*}")
@@ -525,7 +525,7 @@ process WX_REF {
         WisecondorX newref \$NORMALS/*.se.npz wx_references/reference_${binsize}kb.se.npz \
         --binsize ${binsize}000 --cpus ${params.nthreads} --yfrac 1
 
-        if [ ${params.pairedend} ]; then
+        if [ ${params.pairedend} = true ]; then
             WisecondorX newref \$NORMALS/*.pe.npz wx_references/reference_${binsize}kb.pe.npz \
             --binsize ${binsize}000 --cpus ${params.nthreads} --yfrac 1
         fi
