@@ -66,7 +66,7 @@ From the commandline (assuming you have just cloned this git repo), navigate int
 `cd swgs-processing-pipeline`  
 
 To run the pipeline on the sample data, simply now execute the following command:  
-`nextflow run swgs-workflow-se.nf -resume`  
+`nextflow run swgs-workflow-bwa-minimap2.nf -resume`  
 
 To use your own data, open the `nextflow.config` file and replace the path in the 5th line with the path to your own data.  
 So, for example:  
@@ -136,15 +136,15 @@ For example, on one of the testing machines used in developing this pipeline the
 `docker://curlimages/curl:latest`  
 `docker://staphb/fastqc:latest`  
 `docker://quay.io/biocontainers/multiqc:1.3--py35_2`  
-`docker://staphb/trimmomatic:latest`
-`docker://clinicalgenomics/bwa-mem2:2.2.1`
+`docker://staphb/trimmomatic:latest`   
+`docker://clinicalgenomics/bwa-mem2:2.2.1`   
 `docker://niemasd/minimap2_samtools:latest`   
 `docker://broadinstitute/picard:latest`  
 `docker://staphb/samtools:1.19`  
 `docker://staphb/fastqc:latest`  
-`docker://asntech/qdnaseq:v1.26.0`
-`docker://sofvdvel/wisecondorx:0.1`
-`docker://dinguwu/utanos:v0.2`
+`docker://asntech/qdnaseq:v1.26.0`  
+`docker://sofvdvel/wisecondorx:0.1`    
+`docker://dinguwu/utanos:v0.2`   
 
 ### References
 
