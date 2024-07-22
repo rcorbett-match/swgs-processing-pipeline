@@ -318,28 +318,41 @@ process MARKDUP_PE {
     tuple val(sample_id), path(bam_pe), path(bam_se)
 
     output:
-    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam"), 
-    path("processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bai"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bai"), 
-    path("processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt"),
-    path("processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt")
+    tuple val(sample_id), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.*bwa.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.*bwa.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*merged.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*merged.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.*marked_duplicates.metrics.txt"),
+    path("processing_outputs/${sample_id}/${sample_id}.se.*marked_duplicates.metrics.txt")
     
     script:
     """
     mkdir -p "processing_outputs/${sample_id}"
 
-    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
-      -I ${bam_pe} \
-      -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
-      -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
-      --CREATE_INDEX true
-
-    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
-      -I ${bam_se} \
-      -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
-      -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
-      --CREATE_INDEX true
+    if [ ${params.crop50} = true ]; then
+        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_pe} \
+            -O processing_outputs/${sample_id}/${sample_id}.pe.50bp.bwa.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.pe.50bp.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true
+        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_se} \
+            -O processing_outputs/${sample_id}/${sample_id}.se.50bp.merged.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true
+    else
+        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_pe} \
+            -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true
+        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_se} \
+            -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true
+    fi
     """
 }
 
@@ -352,18 +365,27 @@ process MARKDUP_SE {
     tuple val(sample_id), path(bam)
 
     output:
-    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bai"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt")
+    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.se.*bwa.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*bwa.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*marked_duplicates.metrics.txt")
     
     script:
     """
     mkdir -p "processing_outputs/${sample_id}"
-    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
-      I=${bam} \
-      O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
-      M=processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
-      CREATE_INDEX=true
+
+    if [ ${params.crop50} = true ]; then
+        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            I=${bam} \
+            O=processing_outputs/${sample_id}/${sample_id}.se.50bp.bwa.sorted.mkdup.bam \
+            M=processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
+            CREATE_INDEX=true
+    else
+        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            I=${bam} \
+            O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
+            M=processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
+            CREATE_INDEX=true
+    fi
     """
 }
 
