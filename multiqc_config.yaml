@@ -4,3 +4,6 @@ extra_fn_clean_exts:
   - ".merged"
   - ".flagstat"
   - ".coverageTable"
+  - ".50bp"
+
+plots_force_interactive: True
