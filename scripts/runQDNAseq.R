@@ -7,6 +7,7 @@ suppressPackageStartupMessages({
   library(stringr)
   library(future)
   library(CGHcall)
+  library(glue)
 })
 
 # Access command-line arguments
@@ -20,6 +21,7 @@ if (length(args) < 1) {
     nthreads <- args[2]
     output_path <- args[3]
     bamfileslist <- args[4]
+    bin_annos <- args[5]
 }
 
 future::plan("multisession", workers=nthreads)
@@ -39,7 +41,7 @@ extract_sample_names <- function(paths) {
 sample_names <- extract_sample_names(bamfiles)
 
 # Declare paths
-bin_annos <- paste0('1000genomes_PE150_bin_annotations/hg19_bins_150bp_', binsize, '_SE.rds')
+# bin_annos <- paste0('1000genomes_PE150_bin_annotations/hg19_bins_150bp_', binsize, '_SE.rds')
 
 # Load Bin Annotations
 print(getwd())
@@ -76,6 +78,19 @@ saveRDS(copyNumbersSegmented, file = file.path(output_path, paste0(binsize, "_no
 saveRDS(cgh_obj, file = file.path(output_path, paste0(binsize, "_noY_gl_rCN.rds")))
 saveRDS(glBins, file = file.path(output_path, paste0(binsize, "_noY_bins_rCN.rds")))
 
+# Generate plots
+write_plot_rcn <- function(sample, path, obj) {
+  dir.create(path, showWarnings = FALSE, recursive = TRUE)
+
+  png(paste0(path, "/", sample, ".png"), width = 2000, height = 1200, pointsize = 16)
+  QDNAseq::plot(obj[,sample])
+  dev.off()
+}
+
+sample_names <- sampleNames(copyNumbersSegmented)
+print(glue("generating plots for {binsize} noY"))
+lapply(sample_names, write_plot_rcn, path = glue("{output_path}/rcn_plots/noY"), obj = copyNumbersSegmented)
+
 
 #### Without X-chromosome
 #### QDNAseq processing and CN calling
@@ -101,3 +116,7 @@ copyNumbersSegmented@phenoData@data[["name"]] <- word(copyNumbersSegmented@pheno
 saveRDS(copyNumbersSegmented, file = file.path(output_path, paste0(binsize, "_noXY_copyNumbersSegmented.rds")))
 saveRDS(cgh_obj, file = file.path(output_path, paste0(binsize, "_noXY_gl_rCN.rds")))
 saveRDS(glBins, file = file.path(output_path, paste0(binsize, "_noXY_bins_rCN.rds")))
+
+# Generate plots
+print(glue("generating plots for {binsize} noXY"))
+lapply(sample_names, write_plot_rcn, path = glue("{output_path}/rcn_plots/noXY"), obj = copyNumbersSegmented)

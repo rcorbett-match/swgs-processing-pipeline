@@ -17,22 +17,27 @@ This pipeline will cover the following pre-processing steps:
 1. Download a reference genome (curl) - this step isn't really pre-processing, but a reference genome is needed in order to do alignment.
 2. Sequencing quality assessment of the input reads. (FastQC)
 3. Aggregation of these inital QC reports for each sample into a single report. (MultiQC)
-4. Alignment of the reads (minimap2)
+4. Alignment of the reads (bwa)
 5. Duplicate read identification and marking (Picard tools)
 6. Assess read coverage and alignment statistics (Samtools)
 7. Quality assessment of the now aligned reads (FastQC)
 8. Aggregation of this second round of QC reports for each sample into a single report. (MultiQC)
 
+Analysis:
+1. Relative copy number analysis (QDNAseq or WisecondorX)
+2. Absolute copy number scaling (utanos, which utilizes [rascal](https://github.com/crukci-bioinformatics/rascal?tab=readme-ov-file))
+
 ### Visual representation of pipeline execution (DAG)
 
-![](images/flowchart.png)
+![](images/flowchart_pe.png)
 
 ### Directories/Files in this repository
 
 -   `test_data` : Directory containing some test data that can be used with this pipeline. This test data is not published though yet and needs to be kept in a private repo for now.
 -   `nextflow.config`: Config file for Nextflow, contain all Docker container info and setting needed for using Singularity for this pipeline
--   `workflow.nf`: The main pipeline file that contain the instructions for running the pipeline through Nextflow.
--   `misc_scripts`: Old, stub, or under-development scripts. This directory can be safely ignored.
+-   `swgs_workflow_bwa-minimap2.nf`: The main pipeline file that contain the instructions for running the pipeline through Nextflow.
+-   `scripts`: R scripts for running QDNAseq and absolute copy number scaling.
+-   `old_scripts`: Old, stub, or under-development scripts. This directory can be safely ignored.
 -   `.gitignore`: What files/directories to ignore when developing and using git as the version control system.
 -   `README.md`: This file!
 
@@ -61,7 +66,7 @@ From the commandline (assuming you have just cloned this git repo), navigate int
 `cd swgs-processing-pipeline`  
 
 To run the pipeline on the sample data, simply now execute the following command:  
-`nextflow run swgs-workflow-se.nf -resume`  
+`nextflow run swgs-workflow-bwa-minimap2.nf -resume`  
 
 To use your own data, open the `nextflow.config` file and replace the path in the 5th line with the path to your own data.  
 So, for example:  
@@ -73,9 +78,11 @@ Then save your changes, and execute the pipeline using the `nextflow run` comman
 Look for the `results` directory (the output) to appear in this same run directory after pipeline execution.  
 
 ## Input
-This pipeline expects single-ended raw short-read sequencing as input. (ex. from Illumina) The reads are expected in `fastq` formated files with any one of the following extensions: `XXX.fastq` | `XXX.fastq.gz` | `XXX.fq` | `XXX.fq.gz`  
-The pipeline expects **one file** per sample. The fastq format is a common data standard who's details can be found [on wikipedia](https://en.wikipedia.org/wiki/FASTQ_format).
-A brief outline of that formatting is copied below for convenience.
+- This pipeline expects single-end or paired-end raw short-read sequencing as input (ex. from Illumina). The reads are expected in `fastq` formated files with any one of the following extensions: `XXX.fastq` | `XXX.fastq.gz` | `XXX.fq` | `XXX.fq.gz`  
+- The pipeline expects **one file** per sample for single-end data, and **two files** for paired-end data. For paired-end data, the file name should contain '\_1_' or '\_2_' indicating the forward and reverse reads, respectively.
+- Single-end mode uses the fastq file names to identify the sample (i.e. sample id). Paired-end mode uses everything before the forward/reverse indicator to identify the sample. 
+- The fastq format is a common data standard who's details can be found [on wikipedia](https://en.wikipedia.org/wiki/FASTQ_format).
+A brief outline of that formatting is copied below for convenience:
 
     A FASTQ file has four line-separated fields per sequence:
     Field 1 begins with a '@' character and is followed by a sequence identifier and an optional description (like a FASTA title line).
@@ -104,10 +111,16 @@ It's contents will include:
    For detailed insutructions on how to interpret the plots generated in the MultiQC reports there are many great resources online.  
    [Here is one.](https://hbctraining.github.io/Intro-to-rnaseq-hpc-salmon/lessons/qc_fastqc_assessment.html)
    
-3. A folder named `output_bams` containing the aligned reads. One file per sample.  
-   These files will be in the `bam` format and more details on their formatting can be found on the [wikipedia page](https://en.wikipedia.org/wiki/Binary_Alignment_Map).
-   Also contained within this folder are files named like such: `XXX.marked_duplicates.metrics.txt`, they contain metrics about the number of duplicated reads in each sample.
-   There will be of these marked_duplicates files per input sample.
+2. A folder named `processing_output` containing the aligned reads and index files. One sub-directory per sample.
+   Aligned reads will be in the `bam` format along with their associated `bai` file. More details on their formatting can be found on the [wikipedia page](https://en.wikipedia.org/wiki/Binary_Alignment_Map).
+   Also contained within these folders are files named like such: `XXX.marked_duplicates.metrics.txt`, they contain metrics about the number of duplicated reads in each sample.
+
+3. A folder named `relative_cns` containing the results of CNV analysis. Files are divded into folders based on the tool used (QDNAseq or WisecondorX), single or paired end, and bin size. 
+   Details on WisecondorX outputs can be found [here.](https://github.com/CenterForMedicalGeneticsGhent/WisecondorX?tab=readme-ov-file#interpretation-results)
+   QDNAseq outputs contain QDNAseq and CGHcall objects stored as RDS files, for both with and without the X chromosome. The `rcn_plots` folder contains the relative copy number profiles for each sample.
+
+4. A folder named `absolute_cns` containing the results of absolute copy number scaling from the relative copy number results. Files are divded into folders based on the tool used for rCN analysis (QDNAseq or WisecondorX), single or paired end, and bin size.
+   QDNAseq objects containing absolute copy numbers are stored as RDS files. Best-fitting and chosen solutions (ploidy and cellularity) are stored in CSV files. The `acn_plots` folder contains the absolute copy number profiles for each sample.
 
 ## Extras
 
@@ -123,11 +136,15 @@ For example, on one of the testing machines used in developing this pipeline the
 `docker://curlimages/curl:latest`  
 `docker://staphb/fastqc:latest`  
 `docker://quay.io/biocontainers/multiqc:1.3--py35_2`  
+`docker://staphb/trimmomatic:latest`   
+`docker://clinicalgenomics/bwa-mem2:2.2.1`   
 `docker://niemasd/minimap2_samtools:latest`   
 `docker://broadinstitute/picard:latest`  
-`docker://staphb/samtools:latest`  
+`docker://staphb/samtools:1.19`  
 `docker://staphb/fastqc:latest`  
-`docker://quay.io/biocontainers/multiqc:1.3--py35_2`  
+`docker://asntech/qdnaseq:v1.26.0`  
+`docker://sofvdvel/wisecondorx:0.1`    
+`docker://dinguwu/utanos:v0.2`   
 
 ### References
 
