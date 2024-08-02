@@ -23,7 +23,11 @@ if (length(args) < 1) {
   bigwig_average <- args[6]
   bam_path <- args[7]
   out_path <- args[8]
+  paired <- args[9]
 }
+
+print(paired)
+print(typeof(paired))
 
 if (genome == 'mm10') {
   bsgenome = BSgenome.Mmusculus.UCSC.mm10
@@ -53,12 +57,23 @@ bins$mappability <- mappaCol
 bins$blacklist <- calculateBlacklist(bins = bins, bedFiles = blacklist)
 
 # Get the control BAM files and calculate the LOESS residuals per bin; exclude the mitochondrial genome and bins with all N bases
-control_samples <- binReadCounts(bins = bins, path = bam_path)
+control_samples <- binReadCounts(bins = bins, path = bam_path, ext = '.*se.*bam$', pairedEnds = FALSE)
 control_samples <- applyFilters(object = control_samples, residual = FALSE, blacklist = FALSE, mappability = FALSE, bases = FALSE, chromosomes = c("MT", "Y"))
 
 bins$residual <- iterateResiduals(object = control_samples) # Populates the residuals for each bin with the median residual of the control samples
 bins$use <- bins$chromosome %in% as.character(chrs) & bins$bases > 0 # By default, use all bins that are autosomal and have at least one characterized base
 
 # Save our annotated bins for later use
-saveRDS(bins, file = paste0(out_path, "/", genome, "_", bin_size, "kbp_binannot.rds"))
+saveRDS(bins, file = paste0(out_path, "/", genome, "_", bin_size, "_kbp_se_binannot.rds"))
 
+if (paired == "true") {
+  # Get the control BAM files and calculate the LOESS residuals per bin; exclude the mitochondrial genome and bins with all N bases
+  control_samples <- binReadCounts(bins = bins, path = bam_path, ext = '.*pe.*bam$', pairedEnds = TRUE)
+  control_samples <- applyFilters(object = control_samples, residual = FALSE, blacklist = FALSE, mappability = FALSE, bases = FALSE, chromosomes = c("MT", "Y"))
+
+  bins$residual <- iterateResiduals(object = control_samples) # Populates the residuals for each bin with the median residual of the control samples
+  bins$use <- bins$chromosome %in% as.character(chrs) & bins$bases > 0 # By default, use all bins that are autosomal and have at least one characterized base
+
+  # Save our annotated bins for later use
+  saveRDS(bins, file = paste0(out_path, "/", genome, "_", bin_size, "_kbp_pe_binannot.rds"))
+}
