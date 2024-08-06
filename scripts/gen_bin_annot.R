@@ -2,11 +2,9 @@
 library(QDNAseq)
 library(Biobase)
 library(BSgenome.Mmusculus.UCSC.mm10)
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(BSgenome.Hsapiens.UCSC.hg38)
 library(future)
-
-# Setup for parallelization
-options(future.globals.maxSize = 4 * 1024^3) # Set max global size to 4 GB
-plan(strategy = "multicore", workers = 64) # Workers = cores - 1; adjust as appropriate for your Slurm job
 
 # Access command-line arguments
 args <- commandArgs(trailingOnly = TRUE)
@@ -25,6 +23,10 @@ if (length(args) < 1) {
   out_path <- args[8]
   paired <- args[9]
 }
+
+# Setup for parallelization
+options(future.globals.maxSize = 4 * 1024^3) # Set max global size to 4 GB
+plan(strategy = "multicore", workers = nthreads - 1) # Workers = cores - 1; adjust as appropriate for your Slurm job
 
 print(paired)
 print(typeof(paired))
@@ -57,7 +59,7 @@ bins$mappability <- mappaCol
 bins$blacklist <- calculateBlacklist(bins = bins, bedFiles = blacklist)
 
 # Get the control BAM files and calculate the LOESS residuals per bin; exclude the mitochondrial genome and bins with all N bases
-control_samples <- binReadCounts(bins = bins, path = bam_path, ext = '.*se.*bam$', pairedEnds = FALSE)
+control_samples <- binReadCounts(bins = bins, path = bam_path, ext = '.*se.*bam', pairedEnds = FALSE)
 control_samples <- applyFilters(object = control_samples, residual = FALSE, blacklist = FALSE, mappability = FALSE, bases = FALSE, chromosomes = c("MT", "Y"))
 
 bins$residual <- iterateResiduals(object = control_samples) # Populates the residuals for each bin with the median residual of the control samples
@@ -68,7 +70,7 @@ saveRDS(bins, file = paste0(out_path, "/", genome, "_", bin_size, "_kbp_se_binan
 
 if (paired == "true") {
   # Get the control BAM files and calculate the LOESS residuals per bin; exclude the mitochondrial genome and bins with all N bases
-  control_samples <- binReadCounts(bins = bins, path = bam_path, ext = '.*pe.*bam$', pairedEnds = TRUE)
+  control_samples <- binReadCounts(bins = bins, path = bam_path, ext = '.*pe.*bam', pairedEnds = TRUE)
   control_samples <- applyFilters(object = control_samples, residual = FALSE, blacklist = FALSE, mappability = FALSE, bases = FALSE, chromosomes = c("MT", "Y"))
 
   bins$residual <- iterateResiduals(object = control_samples) # Populates the residuals for each bin with the median residual of the control samples
