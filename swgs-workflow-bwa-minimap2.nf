@@ -495,6 +495,7 @@ process QDNA_BINS {
     input:
     path(script)
     val(binsize)
+    path(bwavgbed)
 
     output:
     tuple val(binsize), path("qd_bins")
@@ -503,7 +504,7 @@ process QDNA_BINS {
     """
         mkdir -p qd_bins
         CPATH=\$(pwd)
-        Rscript ${script} ${params.nthreads} ${binsize} ${params.genome} ${params.qd_mappability} ${params.qd_blacklist} \$CPATH/${params.qd_bwgavgbed} ${params.qd_nbams} qd_bins ${params.pairedend}
+        Rscript ${script} ${params.nthreads} ${binsize} ${params.genome} ${params.qd_mappability} ${params.qd_blacklist} \$CPATH/${bwavgbed} ${params.qd_nbams} qd_bins ${params.pairedend}
     """
 }
 
@@ -524,7 +525,8 @@ process CN_QDNA1 {
     """
     mkdir -p "relative_cns/qdnaseq/${bam_type}/${binsize}kb"
     printf '%s\n' "${bams.join('\n')}" > bamfileslist.txt
-    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${bam_type}/${binsize}kb bamfileslist.txt ${binannos_dir}/*${binsize}kb*${bam_type}*.rds 
+    shopt -s nocaseglob extglob
+    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${bam_type}/${binsize}kb bamfileslist.txt ${binannos_dir}/*@(${binsize}kb|${bam_type})*@(${binsize}kb|${bam_type})*.rds
     rm bamfileslist.txt
     """
 }
@@ -661,7 +663,7 @@ workflow {
     binsizes_ch = Channel.from(params.binsizes)
     qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R")
     acn_script_ch = file("$projectDir/scripts/runACN.R")
-    qdna_bins_script_ch = file("$projectDir/scripts/gen_bin_annot_mm10.R")
+    qdna_bins_script_ch = file("$projectDir/scripts/gen_bin_annot.R")
     
     if (params.pairedend) {
         reads_ch = Channel
@@ -729,7 +731,7 @@ workflow {
             bamlist = markdup_ch.map { tuple -> ["se", tuple[1]] }.groupTuple()
         }
         if (params.qd_new_annot) {
-            qd_annot_ch = QDNA_BINS(qdna_bins_script_ch, binsizes_ch)
+            qd_annot_ch = QDNA_BINS(qdna_bins_script_ch, binsizes_ch, params.qd_bwgavgbed)
             bams_ch = qd_annot_ch.combine(bamlist)
             qdna_ch = CN_QDNA1(qdnaseq_script_ch, bams_ch)
             RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
