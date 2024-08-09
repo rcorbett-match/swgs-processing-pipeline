@@ -62,11 +62,14 @@ git clone https://github.com/genomaxx/swgs-processing-pipeline.git
 
 ### How to run this workflow
 
+Modify the `nextflow.config` or the `nextflow_slurm.config` depending on whether you're using slurm. Descriptions of config parameters can be found in the next section.
+
 From the commandline (assuming you have just cloned this git repo), navigate into the newly created directory.  
 `cd swgs-processing-pipeline`  
 
 To run the pipeline on the sample data, simply now execute the following command:  
 `nextflow run swgs-workflow-bwa-minimap2.nf -resume`  
+or `nextflow run swgs-workflow-bwa-minimap2.nf -resume -c nextflow_slurm.config` if using the slurm config file.
 
 To use your own data, open the `nextflow.config` file and replace the path in the 5th line with the path to your own data.  
 So, for example:  
@@ -76,6 +79,40 @@ may become...
 Then save your changes, and execute the pipeline using the `nextflow run` command as seen above.
 
 Look for the `results` directory (the output) to appear in this same run directory after pipeline execution.  
+
+### Config File Parameters
+
+#### General
+- `pairedend` - setting to `true` expects paired-end data and executes in paired-end mode, `false` expects single-end data and executes in single-end mode.
+
+- `crop50` - setting to `true` will trim reads to 50bp.
+- `reads` - specifies the path to fastq files, can handle glob patterns.
+- `genome` - specifies the reference genome build.
+- `ref_path` - path to the reference .fasta file, must be indexed with the resulting files in the same directory.
+- `outdir` - specifies the path to the directory where pipeline outputs will be stored.
+- `nthread` - specifies the number of threads to use for any multi-threaded processes.
+- `aligner` - specifies the name of the aligner to use, 'bwamem2' or 'minimap2'.
+- `multiqc_config` - specifies the path to the .yaml config file for mulqiqc. 
+- `binsizes` - specifies a list of binsizes for copy-number analysis, in units of kbp. 
+
+#### QDNAseq
+- `runqdnaseq` - setting to `true` will perform copy-number analysis using the QDNAseq package.
+
+- `binannos` - specifies the path to .rds bin annotation files to be used with QDNAseq. A bin annotation must exist for each bin size specified earlier, and if running in paired-end mode, for each combination of binsize and pe/se. Files names must include the substrings '{binsze}kb' indicating the binsize, and 'pe' or 'se' indicating paired vs single end, case insensitive. Paired-end mode expects both single and paired end files.
+- `qd_new_annot` - setting to `true` will generate new bin annotations, ignores `binannos`. Note: very slow.
+- `qd_nbams` - specifies the path to bam files of normal samples to be used for bin annotations. No nested directories. Files must have '.se' or '.pe' as part of the file extension, indication single vs paired end. Paired-end mode expects both single and paired end bams. 
+- `qd_mappability` - specifies the path to the mappability track to be used for bin annotations, must be in bigwig format.
+- `qd_blacklist` - specifies the path to the blacklist of problematic regions to be used for bin annotations, must be in BED format.
+- `qd_bwgavgbed` - specifies the path to the bigWigAverageOverBed binary file to be used for bin annotations.
+
+#### WisecondorX
+- `runwisex` - setting to `true` will perform copy-number analysis using WisecondorX.
+
+- `wx_newref` - setting to `true` will generate new references to be used by WisecondorX. By default will use .npz files provided by `wx_normals`. Will ignore existing references in `wx_refs`.
+- `wx_newref_frombam` - setting to `true` will use bam files provided by `wx_nbams` for reference generation instead.
+- `wx_refs` - specifies the path to exisiting normal .npz files for WisecondorX. File names must include the substring '{binsize}kb' indicating the binsize, and must have '.se' or '.pe' as part of the file extension, indication single vs paired end. Paired-end mode expects both single and paired end files.
+- `wx_normals` - specifies the path to normal .npz files for reference generation. Files must have '.se' or '.pe' as part of the file extension, indication single vs paired end. Paired-end mode expects both single and paired end files. 
+- `wx_nbams` - specifies the path to normal bam files for reference generatoin. Files must have '.se' or '.pe' as part of the file extension, indication single vs paired end. Paired-end mode expects both single and paired end bams.
 
 ## Input
 - This pipeline expects single-end or paired-end raw short-read sequencing as input (ex. from Illumina). The reads are expected in `fastq` formated files with any one of the following extensions: `XXX.fastq` | `XXX.fastq.gz` | `XXX.fq` | `XXX.fq.gz`  
@@ -145,6 +182,7 @@ For example, on one of the testing machines used in developing this pipeline the
 `docker://asntech/qdnaseq:v1.26.0`  
 `docker://sofvdvel/wisecondorx:0.1`    
 `docker://dinguwu/utanos:v0.2`   
+`docker://dinguwu/qdnaseq:v0.1`  
 
 ### References
 
