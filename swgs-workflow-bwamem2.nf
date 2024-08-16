@@ -32,6 +32,42 @@ results  : $params.outdir
 """
 
 
+// Download fastqs from Azure
+process AZURE_DOWNLOAD {
+    tag "Download samples from Azure"
+    publishDir params.indir, mode:'copy'
+
+    input:
+    path(script)
+
+    output:
+    path('reads')
+    path('reads/sample_fastq.csv')
+
+    script:
+    """
+    mkdir -p reads
+    env AZCOPY_LOG_LOCATION=./.azcopy AZCOPY_JOB_PLAN_LOCATION=./.azcopy Rscript ${script} '${params.az_sas}' ${params.az_container_url} ${params.az_csv} ${params.pairedend} reads
+    """
+}
+
+// Match sample ids to fastq files
+process MATCH_FASTQ {
+    tag "Match sample IDs to fastq files"
+    publishDir params.indir, mode:'copy'
+
+    input: 
+    path(script)
+
+    output: 
+    path("sample_fastq.csv")
+
+    script:
+    """
+    Rscript ${script} ${params.samples_csv} ${params.reads} ${params.pairedend}
+    """
+}
+
 // Get reference genome
 process DOWNLOAD_MM10 {
     errorStrategy 'retry', maxRetries: 2
@@ -664,18 +700,24 @@ workflow {
     qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R")
     acn_script_ch = file("$projectDir/scripts/runACN.R")
     qdna_bins_script_ch = file("$projectDir/scripts/gen_bin_annot.R")
-    
-    if (params.pairedend) {
-        reads_ch = Channel
-            .fromFilePairs(params.reads, checkIfExists: true, size:-1) { file -> 
-                file.name.split('(_1_|_2_)')[0]
-            }
-    } else {
-        reads_ch = Channel
-                .fromPath(params.reads, checkIfExists: true, type: 'file')
-                .map { file -> tuple(file.simpleName, file) }
-    }
+    azure_script_ch = file("$projectDir/scripts/downloadAZ.R")
+    match_script_ch = file("$projectDir/scripts/matchFastq.R")
 
+    if (params.from_azure) {
+        az_ch = AZURE_DOWNLOAD(azure_script_ch)
+        reads_ch = az_ch[1].splitCsv(skip: 1).map { row -> [row[0], row[1..-1]] }
+    } else {
+        if (params.use_csv) {
+            match_ch = MATCH_FASTQ(match_script_ch)
+            reads_ch = match_ch.splitCsv(skip: 1).map { row -> [row[0], row[1..-1]] }
+        } else {
+            reads_ch = Channel
+                .fromFilePairs(params.reads, checkIfExists: true, size:-1) { 
+                    file -> file.name.removeAll(params.rm_regex, "")
+                }
+        }
+    }
+    
     // Get the reference genome
     // if (params.genome == 'hg19') {
     //     reference_genome_ch = DOWNLOAD_HG19()

@@ -183,6 +183,7 @@ For example, on one of the testing machines used in developing this pipeline the
 `docker://sofvdvel/wisecondorx:0.1`    
 `docker://dinguwu/utanos:v0.2`   
 `docker://dinguwu/qdnaseq:v0.1`  
+`docker://dinguwu/azurestor:v0.1`   
 
 ### References
 

@@ -1,4 +1,5 @@
 # Ignore directories
+input/
 results/
 expanded_test_data/
 
