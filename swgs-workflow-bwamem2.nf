@@ -121,8 +121,9 @@ process FASTQC1 {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir fastqc_${sample_id}_logs
-    fastqc -o fastqc_${sample_id}_logs -f fastq $reads
+    fastqc --dir \$TEMP -o fastqc_${sample_id}_logs -f fastq $reads
     """
 }
 
@@ -364,6 +365,7 @@ process MARKDUP_PE {
     
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p "processing_outputs/${sample_id}"
 
     if [ ${params.crop50} = true ]; then
@@ -371,23 +373,27 @@ process MARKDUP_PE {
             -I ${bam_pe} \
             -O processing_outputs/${sample_id}/${sample_id}.pe.50bp.bwa.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.pe.50bp.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
         java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_se} \
             -O processing_outputs/${sample_id}/${sample_id}.se.50bp.merged.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
     else
         java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_pe} \
             -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
         java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_se} \
             -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
     fi
     """
 }
@@ -485,8 +491,9 @@ process FASTQC2_PE {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id}
+    fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 
@@ -502,8 +509,9 @@ process FASTQC2_SE {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id}
+    fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 
@@ -713,7 +721,7 @@ workflow {
         } else {
             reads_ch = Channel
                 .fromFilePairs(params.reads, checkIfExists: true, size:-1) { 
-                    file -> file.name.removeAll(params.rm_regex, "")
+                    file -> file.name.replaceAll(params.rm_regex, "")
                 }
         }
     }
