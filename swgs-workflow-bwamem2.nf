@@ -123,7 +123,7 @@ process FASTQC1 {
     """
     TEMP=\$(mktemp -d --tmpdir=.)
     mkdir fastqc_${sample_id}_logs
-    fastqc --dir \$TEMP -o fastqc_${sample_id}_logs -f fastq $reads
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc --dir \$TEMP -o fastqc_${sample_id}_logs -f fastq $reads
     """
 }
 
@@ -369,26 +369,26 @@ process MARKDUP_PE {
     mkdir -p "processing_outputs/${sample_id}"
 
     if [ ${params.crop50} = true ]; then
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_pe} \
             -O processing_outputs/${sample_id}/${sample_id}.pe.50bp.bwa.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.pe.50bp.marked_duplicates.metrics.txt \
             --CREATE_INDEX true \
             --TMP_DIR \$TEMP
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_se} \
             -O processing_outputs/${sample_id}/${sample_id}.se.50bp.merged.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
             --CREATE_INDEX true \
             --TMP_DIR \$TEMP
     else
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_pe} \
             -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
             --CREATE_INDEX true \
             --TMP_DIR \$TEMP
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_se} \
             -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
@@ -416,13 +416,13 @@ process MARKDUP_SE {
     mkdir -p "processing_outputs/${sample_id}"
 
     if [ ${params.crop50} = true ]; then
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             I=${bam} \
             O=processing_outputs/${sample_id}/${sample_id}.se.50bp.bwa.sorted.mkdup.bam \
             M=processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
             CREATE_INDEX=true
     else
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             I=${bam} \
             O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
             M=processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
@@ -493,7 +493,7 @@ process FASTQC2_PE {
     """
     TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 
@@ -511,7 +511,7 @@ process FASTQC2_SE {
     """
     TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 

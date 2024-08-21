@@ -48,6 +48,17 @@ for (i in 1:nrow(samples)) {
   file.rename(glue("{out_dir}/{dir}"), glue("{out_dir}/{sample_id}"))
   los <- list.files(path = glue("{out_dir}/{sample_id}"), full.names = TRUE) %>%
     normalizePath()
+
+  # rename fastq files with proper sample ID
+  for (i in 1:length(los)) {
+    exts <- str_extract(los[i], "\\..+")
+    dir_path <- dirname(los[i])
+    new_path <- glue("{dir_path}/{sample_id}_{i}{exts}")
+
+    file.rename(los[i], new_path)
+    los[i] <- new_path
+  }
+
   row <- data.frame(t(c(sample_id, los)))
   if (ncol(row) != length(cols)) {
     warning(glue("{sample_id} did not match to the correct number of fastq file(s) (expects {length(cols)-1}, but matched {ncol(row) - 1})"))
