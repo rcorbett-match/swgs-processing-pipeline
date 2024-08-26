@@ -15,10 +15,10 @@ In the guide that follows below we will assume the reader has some basic familia
 This pipeline will cover the following pre-processing steps:
 
 1. Input preparation (Azure download, matching samples IDs to local data)
-2. Download a reference genome (curl) - this step isn't really pre-processing, but a reference genome is needed in order to do alignment.
-3. Sequencing quality assessment of the input reads. (FastQC)
-4. Aggregation of these inital QC reports for each sample into a single report. (MultiQC)
-5. Alignment of the reads (bwa)
+2. Sequencing quality assessment of the input reads. (FastQC)
+3. Aggregation of these inital QC reports for each sample into a single report. (MultiQC)
+4. Alignment of the reads (bwamem2)
+5. Sorting and indexing bam files (Samtools)
 6. Duplicate read identification and marking (Picard tools)
 7. Assess read coverage and alignment statistics (Samtools)
 8. Quality assessment of the now aligned reads (FastQC)
@@ -34,8 +34,11 @@ Analysis:
 
 ### Directories/Files in this repository
 
--   `test_data` : Directory containing some test data that can be used with this pipeline. This test data is not published though yet and needs to be kept in a private repo for now.
+-   `data`: Directory containing additional data needed by the pipeline. Currently contains bin annotations for QDNAseq.
+-   `test_data`: Directory containing some test data that can be used with this pipeline. This test data is not published though yet and needs to be kept in a private repo for now.
 -   `nextflow.config`: Config file for Nextflow, contain all Docker container info and setting needed for using Singularity for this pipeline
+-   `nextflow_slurm.config`: Config file containing extra configs for running the pipeline with Slurm.
+-   `multiqc_config.yaml`: Config file for MultiQC. 
 -   `swgs_workflow_bwa-bwamem2.nf`: The main pipeline file that contain the instructions for running the pipeline through Nextflow.
 -   `scripts`: R scripts used in multiple processing and analysis steps.
 -   `old_scripts`: Old, stub, or under-development scripts. This directory can be safely ignored.
@@ -54,7 +57,7 @@ For [nextflow](https://www.nextflow.io/docs/latest/getstarted.html)
 For [singularity](https://docs.sylabs.io/guides/3.0/user-guide/installation.html)  
   
 Next, since this pipeline is in a private repository, ensure that you have created the appropriate personal access tokens on github.  
-[This guide](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) provides appropriate instructions  
+[This guide](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) provides appropriate instructions.
 
 Last, install this pipeline by cloning the repo.  
 ```         
@@ -94,21 +97,21 @@ Look for the `results` directory (the output) to appear in this same run directo
 
 - `az_container_url` - URL to an Azure storage container (e.g. 'https://\<storage account>.blob.core.windows.net/\<container>').
 - `az_sas` - Shared Access Signature, URI for granting access permissions to AzCopy. Generate with Azure. 
-- `az_csv` - path to a CSV file with the following columns: 'sample_id' - intended sample ID, 'az_url' - URL to Azure directory containing the sample's FASTQ files (e.g. 'https://\<storage account>.blob.core.windows.net/\<container>/MySample').
-- `reads` - specifies the path to local FASTQ files, can handle glob patterns. If `use_csv` = `true`, must point to a directory with no wildcards (i.e. no glob patterns).
-- `rm_regex` - regex pattern passed to replaceAll(\<regex>, ''). Extracts everything minus the pattern and extensions of FASTQ files, and use as the sample ID. Only used when `use_csv` = `false`.
-- `use_csv` - setting to `true` will associate FASTQ files in `reads` to sample IDs based on `samples_csv`. Only samples present in this CSV will be processed. 
+- `az_csv` - path to a CSV file with the following columns: 'sample_id' - intended sample ID, 'az_url' - URL to an Azure directory containing the sample's FASTQ files (e.g. 'https://\<storage account>.blob.core.windows.net/\<container>/MySample').
+- `reads` - path to local FASTQ files, can handle glob patterns. If `use_csv` = `true`, must point to a directory with no wildcards (i.e. no glob patterns).
+- `rm_regex` - regex pattern passed to fileName.replaceAll(\<regex>, ''). Extracts everything minus the pattern and extensions of FASTQ files, and use as the sample ID. Only used when `use_csv` = `false`.
+- `use_csv` - setting to `true` will associate FASTQ files in `reads` to sample IDs based on `samples_csv`. Only samples present in this file will be processed. 
 - `samples_csv` - path to a CSV file with the following columns: 'sample_id' - intended sample ID, 'reads_id' - a substring that can uniquely indentify the FASTQ file(s) for a given sample, based on the file name.
 
 #### QDNAseq
 - `runqdnaseq` - setting to `true` will perform copy-number analysis using the QDNAseq package.
 
-- `binannos` - path to a directory containing .rds bin annotation files to be used with QDNAseq. A bin annotation must exist for each bin size in `binsizes`, and if running in paired-end mode, for each combination of binsize and pe/se. File names must include the substrings '{binsze}kb' indicating the binsize, and 'pe' or 'se' indicating paired- vs single-end, case insensitive. Must contain ONLY bin annotations for the desired genome build and read length.
+- `binannos` - path to a directory containing .rds bin annotation files to be used with QDNAseq. A bin annotation must exist for each bin size in `binsizes`, and if running in paired-end mode, for each combination of binsize and pe/se. File names must include the substrings '{binsze}kb' indicating the binsize, and 'pe' or 'se' indicating paired- vs single-end, case insensitive. Must ONLY contain bin annotations for the desired genome build and read length.
 - `qd_new_annot` - setting to `true` will generate new bin annotations, ignores `binannos`. Note: very slow.
-- `qd_nbams` - specifies the path to bam files of normal samples to be used for bin annotations. No nested directories. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end bams. 
-- `qd_mappability` - specifies the path to the mappability track to be used for bin annotations, must be in bigwig format.
-- `qd_blacklist` - specifies the path to the blacklist of problematic regions to be used for bin annotations, must be in BED format.
-- `qd_bwgavgbed` - specifies the path to the bigWigAverageOverBed binary file to be used for bin annotations.
+- `qd_nbams` - path to bam files of normal samples to be used for bin annotations. No nested directories. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end bams. 
+- `qd_mappability` - path to the mappability track to be used for bin annotations, must be in bigwig format.
+- `qd_blacklist` - path to the blacklist of problematic regions to be used for bin annotations, must be in BED format.
+- `qd_bwgavgbed` - path to the bigWigAverageOverBed binary file to be used for bin annotations.
 
 #### WisecondorX
 - `runwisex` - setting to `true` will perform copy-number analysis using WisecondorX.
@@ -116,8 +119,8 @@ Look for the `results` directory (the output) to appear in this same run directo
 - `wx_refs` - path to a directory containing existing normal .npz files for WisecondorX. File names must include the substring '{binsize}kb' indicating the binsize, and must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single and paired end files.
 - `wx_newref` - setting to `true` will generate new references to be used by WisecondorX. By default will use .npz files provided by `wx_normals`.
 - `wx_newref_frombam` - setting to `true` will use bam files provided by `wx_nbams` for reference generation instead.
-- `wx_normals` - specifies the path to normal .npz files for reference generation. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end files. 
-- `wx_nbams` - specifies the path to normal bam files for reference generatoin. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end bams.
+- `wx_normals` - path to normal .npz files for reference generation. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end files. 
+- `wx_nbams` - path to normal bam files for reference generatoin. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end bams.
 
 ## Input
 - This pipeline expects single-end or paired-end raw short-read sequencing as input (ex. from Illumina). The reads are expected in `fastq` formated files with any one of the following extensions: `XXX.fastq` | `XXX.fastq.gz` | `XXX.fq` | `XXX.fq.gz`  
@@ -133,9 +136,9 @@ A brief outline of that formatting is copied below for convenience:
     Field 4 encodes the quality values for the sequence in Field 2, and must contain the same number of symbols as letters in the sequence.
     A FASTQ file containing a single sequence might look like this:
     
-    @SEQ_ID
-    GATTTGGGGTTCAAAGCAGTATCGATCAAATAGTAAATCCATTTGTTCAACTCACAGTTT
-    +
+    @SEQ_ID    
+    GATTTGGGGTTCAAAGCAGTATCGATCAAATAGTAAATCCATTTGTTCAACTCACAGTTT     
+    +    
     !''*((((***+))%%%++)(%%%%).1***-+*''))**55CCF>>>>>>CCCCCCC65
 
 ## Output
