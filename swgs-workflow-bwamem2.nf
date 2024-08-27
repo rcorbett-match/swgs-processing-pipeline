@@ -32,6 +32,29 @@ results  : $params.outdir
 """
 
 
+// Download fastqs from Azure
+process AZURE_DOWNLOAD {
+    tag "Download samples from Azure"
+    publishDir params.indir, pattern:'reads', mode:'copy'
+    publishDir params.indir, pattern:'sample_fastq_pub.csv', mode:'copy'
+
+    secret "AZ_SAS_TOKEN"
+
+    input:
+    path(script)
+
+    output:
+    path('reads')
+    path('sample_fastq.csv')
+    path('sample_fastq_pub.csv')
+
+    script:
+    """
+    mkdir -p reads
+    env AZCOPY_LOG_LOCATION=./.azcopy AZCOPY_JOB_PLAN_LOCATION=./.azcopy Rscript ${script} \$AZ_SAS_TOKEN ${params.az_csv} ${params.pairedend} reads ${params.indir}
+    """
+}
+
 // Get reference genome
 process DOWNLOAD_MM10 {
     errorStrategy 'retry', maxRetries: 2
@@ -85,8 +108,9 @@ process FASTQC1 {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir fastqc_${sample_id}_logs
-    fastqc -o fastqc_${sample_id}_logs -f fastq $reads
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc --dir \$TEMP -o fastqc_${sample_id}_logs -f fastq $reads
     """
 }
 
@@ -328,30 +352,35 @@ process MARKDUP_PE {
     
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p "processing_outputs/${sample_id}"
 
     if [ ${params.crop50} = true ]; then
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_pe} \
             -O processing_outputs/${sample_id}/${sample_id}.pe.50bp.bwa.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.pe.50bp.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_se} \
             -O processing_outputs/${sample_id}/${sample_id}.se.50bp.merged.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
     else
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_pe} \
             -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             -I ${bam_se} \
             -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
             -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
-            --CREATE_INDEX true
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
     fi
     """
 }
@@ -374,13 +403,13 @@ process MARKDUP_SE {
     mkdir -p "processing_outputs/${sample_id}"
 
     if [ ${params.crop50} = true ]; then
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             I=${bam} \
             O=processing_outputs/${sample_id}/${sample_id}.se.50bp.bwa.sorted.mkdup.bam \
             M=processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
             CREATE_INDEX=true
     else
-        java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
             I=${bam} \
             O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
             M=processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
@@ -449,8 +478,9 @@ process FASTQC2_PE {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id}
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 
@@ -466,8 +496,9 @@ process FASTQC2_SE {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id}
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 
@@ -664,18 +695,23 @@ workflow {
     qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R")
     acn_script_ch = file("$projectDir/scripts/runACN.R")
     qdna_bins_script_ch = file("$projectDir/scripts/gen_bin_annot.R")
-    
-    if (params.pairedend) {
-        reads_ch = Channel
-            .fromFilePairs(params.reads, checkIfExists: true, size:-1) { file -> 
-                file.name.split('(_1_|_2_)')[0]
-            }
-    } else {
-        reads_ch = Channel
-                .fromPath(params.reads, checkIfExists: true, type: 'file')
-                .map { file -> tuple(file.simpleName, file) }
-    }
+    azure_script_ch = file("$projectDir/scripts/downloadAZ.R")
 
+    if (params.from_azure) {
+        az_ch = AZURE_DOWNLOAD(azure_script_ch)
+        reads_ch = az_ch[1].splitCsv(skip: 1).map { row -> [row[0], row[1..-1]] }
+    } else {
+        if (params.use_csv) {
+            match_ch = Channel.fromPath(params.samples_csv, checkIfExists: true)
+            reads_ch = match_ch.splitCsv(skip: 1).map { row -> [row[0], row[1..-1]] }
+        } else {
+            reads_ch = Channel
+                .fromFilePairs(params.reads, checkIfExists: true, size:-1) { 
+                    file -> file.name.replaceAll(params.rm_regex, "")
+                }
+        }
+    }
+    
     // Get the reference genome
     // if (params.genome == 'hg19') {
     //     reference_genome_ch = DOWNLOAD_HG19()
