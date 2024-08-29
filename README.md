@@ -106,6 +106,7 @@ Each parameter in [General](#General) must be specified. Only parameters for the
 
 #### Data Retrieval (Local - Sample Sheet)
 - `use_csv` - setting to `true` will use samples and FASTQ file paths from `samples_csv`, `false` will use samples from `reads`.
+
 - `samples_csv` - path to a csv file with the columns: 'sample_id', 'read1', 'read2' for paired-end, or 'sample_id', 'read' for single-end.
    - 'sample_id' - intended sample ID.
    - 'read/read1/read2' - full path to a FASTQ file. For paired-end, 'read1' should be forward and 'read2 should be reverse.
@@ -113,6 +114,7 @@ Each parameter in [General](#General) must be specified. Only parameters for the
 
 #### Data Retrieval (Local - glob)
 - `reads` - glob pattern for local FASTQ files (e.g. '/path/to/reads/**.{fastq,fq,fastq.gz,fq.gz}').
+
 - `rm_regex` - regex pattern passed to fileName.replaceAll(\<regex>, ''). Extracts everything minus the pattern and use as the sample ID. Extensions are already removed. Only used when `use_csv` = `false`.
 
 #### QDNAseq
