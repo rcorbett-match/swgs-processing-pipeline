@@ -14,14 +14,15 @@ In the guide that follows below we will assume the reader has some basic familia
 
 This pipeline will cover the following pre-processing steps:
 
-1. Download a reference genome (curl) - this step isn't really pre-processing, but a reference genome is needed in order to do alignment.
+1. Input preparation (Azure download)
 2. Sequencing quality assessment of the input reads. (FastQC)
 3. Aggregation of these inital QC reports for each sample into a single report. (MultiQC)
-4. Alignment of the reads (bwa)
-5. Duplicate read identification and marking (Picard tools)
-6. Assess read coverage and alignment statistics (Samtools)
-7. Quality assessment of the now aligned reads (FastQC)
-8. Aggregation of this second round of QC reports for each sample into a single report. (MultiQC)
+4. Alignment of the reads (bwamem2)
+5. Sorting and indexing bam files (Samtools)
+6. Duplicate read identification and marking (Picard tools)
+7. Assess read coverage and alignment statistics (Samtools)
+8. Quality assessment of the now aligned reads (FastQC)
+9. Aggregation of this second round of QC reports for each sample into a single report. (MultiQC)
 
 Analysis:
 1. Relative copy number analysis (QDNAseq or WisecondorX)
@@ -33,10 +34,13 @@ Analysis:
 
 ### Directories/Files in this repository
 
--   `test_data` : Directory containing some test data that can be used with this pipeline. This test data is not published though yet and needs to be kept in a private repo for now.
+-   `data`: Directory containing additional data needed by the pipeline. Currently contains bin annotations for QDNAseq.
+-   `test_data`: Directory containing some test data that can be used with this pipeline. This test data is not published though yet and needs to be kept in a private repo for now.
 -   `nextflow.config`: Config file for Nextflow, contain all Docker container info and setting needed for using Singularity for this pipeline
--   `swgs_workflow_bwa-minimap2.nf`: The main pipeline file that contain the instructions for running the pipeline through Nextflow.
--   `scripts`: R scripts for running QDNAseq and absolute copy number scaling.
+-   `nextflow_slurm.config`: Config file containing extra configs for running the pipeline with Slurm.
+-   `multiqc_config.yaml`: Config file for MultiQC. 
+-   `swgs_workflow_bwa-bwamem2.nf`: The main pipeline file that contain the instructions for running the pipeline through Nextflow.
+-   `scripts`: R scripts used in multiple processing and analysis steps.
 -   `old_scripts`: Old, stub, or under-development scripts. This directory can be safely ignored.
 -   `.gitignore`: What files/directories to ignore when developing and using git as the version control system.
 -   `README.md`: This file!
@@ -53,11 +57,11 @@ For [nextflow](https://www.nextflow.io/docs/latest/getstarted.html)
 For [singularity](https://docs.sylabs.io/guides/3.0/user-guide/installation.html)  
   
 Next, since this pipeline is in a private repository, ensure that you have created the appropriate personal access tokens on github.  
-[This guide](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) provides appropriate instructions  
+[This guide](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) provides appropriate instructions.
 
 Last, install this pipeline by cloning the repo.  
 ```         
-git clone https://github.com/genomaxx/swgs-processing-pipeline.git
+git clone https://github.com/Huntsmanlab/swgs-processing-pipeline.git
 ```
 
 ### How to run this workflow
@@ -65,23 +69,84 @@ git clone https://github.com/genomaxx/swgs-processing-pipeline.git
 From the commandline (assuming you have just cloned this git repo), navigate into the newly created directory.  
 `cd swgs-processing-pipeline`  
 
-To run the pipeline on the sample data, simply now execute the following command:  
-`nextflow run swgs-workflow-bwa-minimap2.nf -resume`  
+If importing data from Azure, create a SAS token with read and list permissions for blob container and object. Copy the SAS token ("sv=...") and set it as a Nextflow secret using the following command:   
+`nextflow secrets set AZ_SAS_TOKEN '<sas-token>'`
 
-To use your own data, open the `nextflow.config` file and replace the path in the 5th line with the path to your own data.  
-So, for example:  
-`reads = "$baseDir/test_data/chr21_raw/**.{fastq,fq,fastq.gz,fq.gz}"`  
-may become...  
-`reads = "$baseDir/../yournewdatadirectory/somefileprefix**.{fastq,fq,fastq.gz,fq.gz}"`  
-Then save your changes, and execute the pipeline using the `nextflow run` command as seen above.
+Modify the `nextflow.config` or the `nextflow_slurm.config` depending on whether you're using slurm. Descriptions of config parameters can be found in the next section.
 
-Look for the `results` directory (the output) to appear in this same run directory after pipeline execution.  
+To run the pipeline, simply now execute the following command:  
+`nextflow run swgs-workflow-bwamem2.nf -resume`  
+or `nextflow run swgs-workflow-bwamem2.nf -resume -c nextflow_slurm.config` if using the slurm config file.
+
+Look for the `results` directory (the output) to appear in this same run directory after pipeline execution. If importing data from Azure, an `input` directory will be created which contains the downloaded reads and a sheet mapping samples to FASTQ files.
+
+### Config File Parameters
+
+Each parameter in [General](#General) must be specified. Only parameters for the chosen method of data retrieval need to be specified. QDNAseq and WisecondorX parameters only need to be specified if they are set to run. Bin annotation and reference generation parameters are optional.
+
+#### General
+- `pairedend` - setting to `true` expects paired-end data and executes in paired-end mode, `false` expects single-end data and executes in single-end mode.
+
+- `crop50` - setting to `true` will trim reads to 50bp.
+- `genome` - reference genome build.
+- `ref_path` - path to the reference .fasta file, must be indexed with the resulting files in the same directory.
+- `outdir` - directory path where pipeline outputs will be stored.
+- `indir` - directory path where data inputs generated by the pipeline itself are stored (i.e. Azure data).
+- `nthread` - number of threads to use for any multi-threaded processes.
+- `aligner` - name of the aligner to use, only 'bwamem2' is supported at the moment.
+- `multiqc_config` - path to the .yaml config file for multiqc.
+- `binsizes` - list of bin sizes for copy-number analysis, in units of kbp.
+
+#### Data retrieval (Azure)
+- `from_azure` - setting to `true` will download and use data from Azure, `false` will use local data via `samples_csv` or `reads`.
+
+- `az_csv` - path to a CSV file with the following columns: 'sample_id', 'az_url'. 
+   - 'sample_id' - intended sample ID.
+   - 'az_url' - URL to an Azure directory containing the sample's FASTQ files (e.g. 'https://\<storage-account>.blob.core.windows.net/\<container>/\<MySample>').
+
+#### Data Retrieval (Local - Sample Sheet)
+- `use_csv` - setting to `true` will use samples and FASTQ file paths from `samples_csv`, `false` will use samples from `reads`.
+
+- `samples_csv` - path to a csv file with the columns: 'sample_id', 'read1', 'read2' for paired-end, or 'sample_id', 'read' for single-end.
+   - 'sample_id' - intended sample ID.
+   - 'read/read1/read2' - full path to a FASTQ file. For paired-end, 'read1' should be forward and 'read2 should be reverse.
+   - Must contain column header, no row names, no quotes around values.
+
+#### Data Retrieval (Local - glob)
+- `reads` - glob pattern for local FASTQ files (e.g. '/path/to/reads/**.{fastq,fq,fastq.gz,fq.gz}').
+
+- `rm_regex` - regex pattern passed to fileName.replaceAll(\<regex>, ''). Extracts everything minus the pattern and use as the sample ID. Extensions are already removed. Only used when `use_csv` = `false`.
+
+#### QDNAseq
+- `runqdnaseq` - setting to `true` will perform copy-number analysis using the QDNAseq package.
+
+- `binannos` - path to a directory containing .rds bin annotation files to be used with QDNAseq. A bin annotation must exist for each bin size in `binsizes`, and if running in paired-end mode, for each combination of binsize and pe/se. File names must include the substrings '{binsze}kb' indicating the binsize, and 'pe' or 'se' indicating paired- vs single-end, case insensitive. Must ONLY contain bin annotations for the desired genome build and read length.
+
+#### QDBAseq Bin Annotation Generation (Optional)
+- `qd_new_annot` - setting to `true` will generate new bin annotations, ignores `binannos`. Note: very slow.
+
+- `qd_nbams` - path to bam files of normal samples to be used for bin annotations. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end bams. 
+- `qd_mappability` - path to the mappability track to be used for bin annotations, must be in bigwig format.
+- `qd_blacklist` - path to the blacklist of problematic regions to be used for bin annotations, must be in BED format.
+- `qd_bwgavgbed` - path to the bigWigAverageOverBed binary file to be used for bin annotations.
+
+#### WisecondorX
+- `runwisex` - setting to `true` will perform copy-number analysis using WisecondorX.
+
+- `wx_refs` - path to a directory containing existing normal .npz files for WisecondorX. File names must include the substring '{binsize}kb' indicating the binsize, and must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single and paired end files.
+
+#### WisecondorX Reference Generation (Optional)
+- `wx_newref` - setting to `true` will generate new references to be used by WisecondorX. By default will use .npz files provided by `wx_normals`.
+
+- `wx_newref_frombam` - setting to `true` will use bam files provided by `wx_nbams` for reference generation instead.
+- `wx_normals` - path to normal .npz files for reference generation. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end files. 
+- `wx_nbams` - path to normal bam files for reference generatoin. Files must have '.se' or '.pe' as part of the file extension, indicating single- vs paired-end. Paired-end mode expects both single- and paired-end bams.
 
 ## Input
 - This pipeline expects single-end or paired-end raw short-read sequencing as input (ex. from Illumina). The reads are expected in `fastq` formated files with any one of the following extensions: `XXX.fastq` | `XXX.fastq.gz` | `XXX.fq` | `XXX.fq.gz`  
-- The pipeline expects **one file** per sample for single-end data, and **two files** for paired-end data. For paired-end data, the file name should contain '\_1_' or '\_2_' indicating the forward and reverse reads, respectively.
-- Single-end mode uses the fastq file names to identify the sample (i.e. sample id). Paired-end mode uses everything before the forward/reverse indicator to identify the sample. 
-- The fastq format is a common data standard who's details can be found [on wikipedia](https://en.wikipedia.org/wiki/FASTQ_format).
+- This pipeline expects **one file** per sample for single-end data, and **two files** for paired-end data. For paired-end, file names should indicate forward vs reverse read.
+- Refer to [data retrieval](#data-retrieval-azure) parameters for how FASTQ files can be provided.
+- The FASTQ format is a common data standard who's details can be found [on wikipedia](https://en.wikipedia.org/wiki/FASTQ_format).
 A brief outline of that formatting is copied below for convenience:
 
     A FASTQ file has four line-separated fields per sequence:
@@ -91,9 +156,9 @@ A brief outline of that formatting is copied below for convenience:
     Field 4 encodes the quality values for the sequence in Field 2, and must contain the same number of symbols as letters in the sequence.
     A FASTQ file containing a single sequence might look like this:
     
-    @SEQ_ID
-    GATTTGGGGTTCAAAGCAGTATCGATCAAATAGTAAATCCATTTGTTCAACTCACAGTTT
-    +
+    @SEQ_ID    
+    GATTTGGGGTTCAAAGCAGTATCGATCAAATAGTAAATCCATTTGTTCAACTCACAGTTT     
+    +    
     !''*((((***+))%%%++)(%%%%).1***-+*''))**55CCF>>>>>>CCCCCCC65
 
 ## Output
@@ -115,11 +180,11 @@ It's contents will include:
    Aligned reads will be in the `bam` format along with their associated `bai` file. More details on their formatting can be found on the [wikipedia page](https://en.wikipedia.org/wiki/Binary_Alignment_Map).
    Also contained within these folders are files named like such: `XXX.marked_duplicates.metrics.txt`, they contain metrics about the number of duplicated reads in each sample.
 
-3. A folder named `relative_cns` containing the results of CNV analysis. Files are divded into folders based on the tool used (QDNAseq or WisecondorX), single or paired end, and bin size. 
+3. A folder named `relative_cns` containing the results of CNV analysis. Files are divided into folders based on the tool used (QDNAseq or WisecondorX), single- or paired-end, and bin size. 
    Details on WisecondorX outputs can be found [here.](https://github.com/CenterForMedicalGeneticsGhent/WisecondorX?tab=readme-ov-file#interpretation-results)
    QDNAseq outputs contain QDNAseq and CGHcall objects stored as RDS files, for both with and without the X chromosome. The `rcn_plots` folder contains the relative copy number profiles for each sample.
 
-4. A folder named `absolute_cns` containing the results of absolute copy number scaling from the relative copy number results. Files are divded into folders based on the tool used for rCN analysis (QDNAseq or WisecondorX), single or paired end, and bin size.
+4. A folder named `absolute_cns` containing the results of absolute copy number scaling from the relative copy number results. Files are divided into folders based on the tool used for rCN analysis (QDNAseq or WisecondorX), single- or paired-end, and bin size.
    QDNAseq objects containing absolute copy numbers are stored as RDS files. Best-fitting and chosen solutions (ploidy and cellularity) are stored in CSV files. The `acn_plots` folder contains the absolute copy number profiles for each sample.
 
 ## Extras
@@ -131,6 +196,9 @@ For example, on one of the testing machines used in developing this pipeline the
 `source /cvmfs/soft.computecanada.ca/config/profile/bash.sh`  
 `module load apptainer`  
 `module load nextflow`  
+
+
+If needed, specify the `NXF_JAVA_HOME` environment variable with a path to the desired version of JDK.
 
 ### List of containers used by singularity in this workflow  
 `docker://curlimages/curl:latest`  
@@ -145,6 +213,8 @@ For example, on one of the testing machines used in developing this pipeline the
 `docker://asntech/qdnaseq:v1.26.0`  
 `docker://sofvdvel/wisecondorx:0.1`    
 `docker://dinguwu/utanos:v0.2`   
+`docker://dinguwu/qdnaseq:v0.1`  
+`docker://dinguwu/azurestor:v0.1`   
 
 ### References
 

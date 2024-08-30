@@ -67,7 +67,7 @@ copyNumbersSegmented <- segmentBins(copyNumbersSmooth, transformFun = "sqrt")
 copyNumbersSegmented <- normalizeSegmentedBins(copyNumbersSegmented)
 
 # Call Gains and Losses
-glBins <- callBins(copyNumbersSegmented, ncpus = nthreads)
+glBins <- callBins(copyNumbersSegmented, ncpus = nthreads, method = "cutoff", cutoffs = c(-0.1, 0.1))
 cgh_obj <- makeCgh(glBins)
 
 # Fix sample names
@@ -106,7 +106,7 @@ copyNumbersSegmented <- segmentBins(copyNumbersSmooth, transformFun = "sqrt")
 copyNumbersSegmented <- normalizeSegmentedBins(copyNumbersSegmented)
 
 # Call Gains and Losses
-glBins <- callBins(copyNumbersSegmented, ncpus = nthreads)
+glBins <- callBins(copyNumbersSegmented, ncpus = nthreads, method = "cutoff", cutoffs = c(-0.1, 0.1))
 cgh_obj <- makeCgh(glBins)
 
 # Fix sample names

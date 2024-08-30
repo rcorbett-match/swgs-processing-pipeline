@@ -32,6 +32,29 @@ results  : $params.outdir
 """
 
 
+// Download fastqs from Azure
+process AZURE_DOWNLOAD {
+    tag "Download samples from Azure"
+    publishDir params.indir, pattern:'reads', mode:'copy'
+    publishDir params.indir, pattern:'sample_fastq_pub.csv', mode:'copy'
+
+    secret "AZ_SAS_TOKEN"
+
+    input:
+    path(script)
+
+    output:
+    path('reads')
+    path('sample_fastq.csv')
+    path('sample_fastq_pub.csv')
+
+    script:
+    """
+    mkdir -p reads
+    env AZCOPY_LOG_LOCATION=./.azcopy AZCOPY_JOB_PLAN_LOCATION=./.azcopy Rscript ${script} \$AZ_SAS_TOKEN ${params.az_csv} ${params.pairedend} reads ${params.indir}
+    """
+}
+
 // Get reference genome
 process DOWNLOAD_MM10 {
     errorStrategy 'retry', maxRetries: 2
@@ -85,8 +108,9 @@ process FASTQC1 {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir fastqc_${sample_id}_logs
-    fastqc -o fastqc_${sample_id}_logs -f fastq $reads
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc --dir \$TEMP -o fastqc_${sample_id}_logs -f fastq $reads
     """
 }
 
@@ -318,28 +342,46 @@ process MARKDUP_PE {
     tuple val(sample_id), path(bam_pe), path(bam_se)
 
     output:
-    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam"), 
-    path("processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bai"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bai"), 
-    path("processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt"),
-    path("processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt")
+    tuple val(sample_id), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.*bwa.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.*bwa.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*merged.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*merged.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.pe.*marked_duplicates.metrics.txt"),
+    path("processing_outputs/${sample_id}/${sample_id}.se.*marked_duplicates.metrics.txt")
     
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p "processing_outputs/${sample_id}"
 
-    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
-      -I ${bam_pe} \
-      -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
-      -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
-      --CREATE_INDEX true
-
-    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
-      -I ${bam_se} \
-      -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
-      -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
-      --CREATE_INDEX true
+    if [ ${params.crop50} = true ]; then
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_pe} \
+            -O processing_outputs/${sample_id}/${sample_id}.pe.50bp.bwa.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.pe.50bp.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_se} \
+            -O processing_outputs/${sample_id}/${sample_id}.se.50bp.merged.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
+    else
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_pe} \
+            -O processing_outputs/${sample_id}/${sample_id}.pe.bwa.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.pe.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
+            -I ${bam_se} \
+            -O processing_outputs/${sample_id}/${sample_id}.se.merged.sorted.mkdup.bam \
+            -M processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
+            --CREATE_INDEX true \
+            --TMP_DIR \$TEMP
+    fi
     """
 }
 
@@ -352,18 +394,27 @@ process MARKDUP_SE {
     tuple val(sample_id), path(bam)
 
     output:
-    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bai"), 
-    path("processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt")
+    tuple val(sample_id), path("processing_outputs/${sample_id}/${sample_id}.se.*bwa.sorted.mkdup.bam"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*bwa.sorted.mkdup.bai"), 
+    path("processing_outputs/${sample_id}/${sample_id}.se.*marked_duplicates.metrics.txt")
     
     script:
     """
     mkdir -p "processing_outputs/${sample_id}"
-    java "-Xmx16g" -jar /usr/picard/picard.jar MarkDuplicates \
-      I=${bam} \
-      O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
-      M=processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
-      CREATE_INDEX=true
+
+    if [ ${params.crop50} = true ]; then
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
+            I=${bam} \
+            O=processing_outputs/${sample_id}/${sample_id}.se.50bp.bwa.sorted.mkdup.bam \
+            M=processing_outputs/${sample_id}/${sample_id}.se.50bp.marked_duplicates.metrics.txt \
+            CREATE_INDEX=true
+    else
+        java -Xmx16g -XX:-UsePerfData -jar /usr/picard/picard.jar MarkDuplicates \
+            I=${bam} \
+            O=processing_outputs/${sample_id}/${sample_id}.se.bwa.sorted.mkdup.bam \
+            M=processing_outputs/${sample_id}/${sample_id}.se.marked_duplicates.metrics.txt \
+            CREATE_INDEX=true
+    fi
     """
 }
 
@@ -427,8 +478,9 @@ process FASTQC2_PE {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id}
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 
@@ -444,8 +496,9 @@ process FASTQC2_SE {
  
     script:
     """
+    TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
-    fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id}
+    env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
     """
 }
 
@@ -468,14 +521,31 @@ process MULTIQC2 {
     """
 }
 
+// Bin annotation for QDNAseq
+process QDNA_BINS {
+    input:
+    path(script)
+    val(binsize)
+    path(bwavgbed)
+
+    output:
+    tuple val(binsize), path("qd_bins")
+
+    script: 
+    """
+        mkdir -p qd_bins
+        CPATH=\$(pwd)
+        Rscript ${script} ${params.nthreads} ${binsize} ${params.genome} ${params.qd_mappability} ${params.qd_blacklist} \$CPATH/${bwavgbed} ${params.qd_nbams} qd_bins ${params.pairedend}
+    """
+}
+
 // Call Copy-Numbers using QDNAseq
 process CN_QDNA1 {
     publishDir params.outdir, mode:'copy'
 
     input:
     path(script)
-    path(binannos_dir)
-    tuple val(binsize), val(bam_type), val(bams)
+    tuple val(binsize), path(binannos_dir), val(bam_type), val(bams)
 
     output:
     path("relative_cns/qdnaseq/${bam_type}/${binsize}kb")
@@ -486,7 +556,8 @@ process CN_QDNA1 {
     """
     mkdir -p "relative_cns/qdnaseq/${bam_type}/${binsize}kb"
     printf '%s\n' "${bams.join('\n')}" > bamfileslist.txt
-    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${bam_type}/${binsize}kb bamfileslist.txt ${binannos_dir}/*${binsize}kb*.rds
+    shopt -s nocaseglob extglob
+    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${bam_type}/${binsize}kb bamfileslist.txt ${binannos_dir}/*@(${binsize}kb|${bam_type})*@(${binsize}kb|${bam_type})*.rds
     rm bamfileslist.txt
     """
 }
@@ -623,18 +694,24 @@ workflow {
     binsizes_ch = Channel.from(params.binsizes)
     qdnaseq_script_ch = file("$projectDir/scripts/runQDNAseq.R")
     acn_script_ch = file("$projectDir/scripts/runACN.R")
-    
-    if (params.pairedend) {
-        reads_ch = Channel
-            .fromFilePairs(params.reads, checkIfExists: true, size:-1) { file -> 
-                file.name.split('(_1_|_2_)')[0]
-            }
-    } else {
-        reads_ch = Channel
-                .fromPath(params.reads, checkIfExists: true, type: 'file')
-                .map { file -> tuple(file.simpleName, file) }
-    }
+    qdna_bins_script_ch = file("$projectDir/scripts/gen_bin_annot.R")
+    azure_script_ch = file("$projectDir/scripts/downloadAZ.R")
 
+    if (params.from_azure) {
+        az_ch = AZURE_DOWNLOAD(azure_script_ch)
+        reads_ch = az_ch[1].splitCsv(skip: 1).map { row -> [row[0], row[1..-1]] }
+    } else {
+        if (params.use_csv) {
+            match_ch = Channel.fromPath(params.samples_csv, checkIfExists: true)
+            reads_ch = match_ch.splitCsv(skip: 1).map { row -> [row[0], row[1..-1]] }
+        } else {
+            reads_ch = Channel
+                .fromFilePairs(params.reads, checkIfExists: true, size:-1) { 
+                    file -> file.name.replaceAll(params.rm_regex, "")
+                }
+        }
+    }
+    
     // Get the reference genome
     // if (params.genome == 'hg19') {
     //     reference_genome_ch = DOWNLOAD_HG19()
@@ -689,9 +766,16 @@ workflow {
         } else {
             bamlist = markdup_ch.map { tuple -> ["se", tuple[1]] }.groupTuple()
         }
-        bams_ch = binsizes_ch.combine(bamlist)
-        qdna_ch = CN_QDNA1(qdnaseq_script_ch, params.binannos, bams_ch)
-        RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
+        if (params.qd_new_annot) {
+            qd_annot_ch = QDNA_BINS(qdna_bins_script_ch, binsizes_ch, params.qd_bwgavgbed)
+            bams_ch = qd_annot_ch.combine(bamlist)
+            qdna_ch = CN_QDNA1(qdnaseq_script_ch, bams_ch)
+            RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
+        } else {
+            bams_ch = binsizes_ch.combine(Channel.of(params.binannos)).combine(bamlist)
+            qdna_ch = CN_QDNA1(qdnaseq_script_ch, bams_ch)
+            RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
+        }
     }
 
     if (params.runwisex) {
