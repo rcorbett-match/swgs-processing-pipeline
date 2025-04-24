@@ -99,18 +99,22 @@ process DOWNLOAD_HG38 {
 // Pre-alignment QC
 process FASTQC1 {
     tag "FASTQC on $sample_id"
+    publishDir params.outdir, mode:'copy', pattern: 'reports/pre_alignment_fastqc_reports/*'
 
     input:
-    tuple val(sample_id), path(reads)
- 
+    tuple val(sample_id), path(reads) 
+
     output:
-    path "fastqc_${sample_id}_logs"
- 
+    path "fastqc_${sample_id}_logs", emit: logs
+    path "reports/pre_alignment_fastqc_reports/*" 
+
     script:
     """
     TEMP=\$(mktemp -d --tmpdir=.)
     mkdir fastqc_${sample_id}_logs
+    mkdir -p reports/pre_alignment_fastqc_reports
     env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc --dir \$TEMP -o fastqc_${sample_id}_logs -f fastq $reads
+    cp fastqc_${sample_id}_logs/${sample_id}_*fastqc.html reports/pre_alignment_fastqc_reports/
     """
 }
 
@@ -167,20 +171,20 @@ process TRIMMOMATIC_PE {
         mkdir trimmed
 
         if [ ${params.crop50} = true ]; then
-            trimmomatic PE -threads ${params.nthreads} -phred33 $reads \
+            trimmomatic PE -threads ${task.ncpus} -phred33 $reads \
                 trimmed/${sample_id}.f.paired.fastq \
                 trimmed/${sample_id}.f.unpaired.fastq \
                 trimmed/${sample_id}.r.paired.fastq \
                 trimmed/${sample_id}.r.unpaired.fastq \
-                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:keepBothReads \
+                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:true \
                 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5 CROP:50
         else
-            trimmomatic PE -threads ${params.nthreads} -phred33 $reads \
+            trimmomatic PE -threads ${task.cpus} -phred33 $reads \
                 trimmed/${sample_id}.f.paired.fastq \
                 trimmed/${sample_id}.f.unpaired.fastq \
                 trimmed/${sample_id}.r.paired.fastq \
                 trimmed/${sample_id}.r.unpaired.fastq \
-                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:keepBothReads \
+                ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-PE-2.fa:2:30:10:2:true \
                 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
         fi
         """
@@ -201,12 +205,12 @@ process TRIMMOMATIC_SE {
         mkdir trimmed
 
         if [ ${params.crop50} = true ]; then
-            trimmomatic SE -threads ${params.nthreads} -phred33 $reads \
+            trimmomatic SE -threads ${task.cpus} -phred33 $reads \
                 trimmed/${sample_id}.se.fastq \
                 ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:30:10:2 \
                 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5 CROP:50
         else 
-            trimmomatic SE -threads ${params.nthreads} -phred33 $reads \
+            trimmomatic SE -threads ${task.cpus} -phred33 $reads \
                 trimmed/${sample_id}.se.fastq \
                 ILLUMINACLIP:/Trimmomatic-0.39/adapters/TruSeq3-SE.fa:2:30:10:2 \
                 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 MAXINFO:100:0.5
@@ -228,9 +232,9 @@ process MINIMAP2_ALIGNMENT {
     script:
     """
     mkdir -p "alignment_${sample_id}"
-    minimap2 -a -x sr -Y -K 100M -t ${params.nthreads} ${reference} ${reads} | samtools view -hbS | \
-        samtools sort -m 2G -@ ${params.nthreads} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
-    samtools index -@ ${params.nthreads} alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    minimap2 -a -x sr -Y -K 100M -t ${task.cpus} ${reference} ${reads} | samtools view -hbS | \
+        samtools sort -m 2G -@ ${task.cpus} -o alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    samtools index -@ ${task.cpus} alignment_${sample_id}/${sample_id}.se.bwa.sorted.bam
     """
 }
 
@@ -253,9 +257,9 @@ process BWAMEM2_ALIGNMENT_PE {
     forward_unpaired = unpairedList[0]
     """
     mkdir -p "alignment_${sample_id}"
-    bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${paired_reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.pe.bwa.sam 
+    bwa-mem2 mem -M -t ${task.cpus} ${params.ref_path} ${paired_reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.pe.bwa.sam 
 
-    bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${forward_unpaired} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.up.bwa.sam
+    bwa-mem2 mem -M -t ${task.cpus} ${params.ref_path} ${forward_unpaired} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.up.bwa.sam
     """      
 }//.after(INDEX_BWAREF)
 
@@ -275,7 +279,7 @@ process BWAMEM2_ALIGNMENT_SE {
     // fa_path = bwaList[4]                           // Access individual elements from the list
     """
     mkdir -p "alignment_${sample_id}"
-    bwa-mem2 mem -M -t ${params.nthreads} ${params.ref_path} ${reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.se.bwa.sam
+    bwa-mem2 mem -M -t ${task.cpus} ${params.ref_path} ${reads} -R '@RG\\tID:${sample_id}_ID\\tSM:${sample_id}\\tLB:${sample_id}_LB\\tPL:ILLUMINA' > alignment_${sample_id}/${sample_id}.se.bwa.sam
     """
 }//.after(INDEX_BWAREF)
 
@@ -294,23 +298,23 @@ process SORT_INDEX_PE {
     mkdir -p "sorting_${sample_id}"
 
     samtools view -hbS ${sample_id}.pe.bwa.sam | \
-        samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
-    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
+        samtools sort -m 2G -@ ${task.cpus} -o sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
+    samtools index -@ ${task.cpus} sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
 
     samtools view -hbS ${sample_id}.up.bwa.sam | \
-        samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam
-    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam
+        samtools sort -m 2G -@ ${task.cpus} -o sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam
+    samtools index -@ ${task.cpus} sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam
 
     # Grab forward strand from P.E. post_alignment
     samtools view -F 16 -o sorting_${sample_id}/${sample_id}.pe.f.bwa.sorted.bam \
         sorting_${sample_id}/${sample_id}.pe.bwa.sorted.bam
-    samtools merge -f -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.se.merged.bam \
+    samtools merge -f -@ ${task.cpus} sorting_${sample_id}/${sample_id}.se.merged.bam \
         sorting_${sample_id}/${sample_id}.up.bwa.sorted.bam \
         sorting_${sample_id}/${sample_id}.pe.f.bwa.sorted.bam
     # Re-Sort now merged BAM
-    samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.se.merged.sorted.bam \
+    samtools sort -m 2G -@ ${task.cpus} -o sorting_${sample_id}/${sample_id}.se.merged.sorted.bam \
         sorting_${sample_id}/${sample_id}.se.merged.bam
-    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.se.merged.sorted.bam
+    samtools index -@ ${task.cpus} sorting_${sample_id}/${sample_id}.se.merged.sorted.bam
     """
 }//.after(INDEX_BWAREF)
 
@@ -328,8 +332,8 @@ process SORT_INDEX_SE {
     """
     mkdir -p "sorting_${sample_id}"
     samtools view -hbS ${sample_id}.se.bwa.sam | \
-        samtools sort -m 2G -@ ${params.nthreads} -o sorting_${sample_id}/${sample_id}.se.bwa.sorted.bam
-    samtools index -@ ${params.nthreads} sorting_${sample_id}/${sample_id}.se.bwa.sorted.bam
+        samtools sort -m 2G -@ ${task.cpus} -o sorting_${sample_id}/${sample_id}.se.bwa.sorted.bam
+    samtools index -@ ${task.cpus} sorting_${sample_id}/${sample_id}.se.bwa.sorted.bam
     """
 }//.after(INDEX_BWAREF)
 
@@ -437,13 +441,13 @@ process INDCOVFLAG_PE {
     """
     mkdir -p metrics_files
 
-    samtools index -@ ${params.nthreads} ${bam_pe}
+    samtools index -@ ${task.cpus} ${bam_pe}
     samtools coverage ${bam_pe} > metrics_files/${sample_id}.pe.coverageTable.tsv
-    samtools flagstat -@ ${params.nthreads} ${bam_pe} > metrics_files/${sample_id}.pe.flagstat.txt
+    samtools flagstat -@ ${task.cpus} ${bam_pe} > metrics_files/${sample_id}.pe.flagstat.txt
 
-    samtools index -@ ${params.nthreads} ${bam_se}
+    samtools index -@ ${task.cpus} ${bam_se}
     samtools coverage ${bam_se} > metrics_files/${sample_id}.se.coverageTable.tsv
-    samtools flagstat -@ ${params.nthreads} ${bam_se} > metrics_files/${sample_id}.se.flagstat.txt
+    samtools flagstat -@ ${task.cpus} ${bam_se} > metrics_files/${sample_id}.se.flagstat.txt
     """
 }
 
@@ -462,45 +466,53 @@ process INDCOVFLAG_SE {
     script:
     """
     mkdir -p metrics_files
-    samtools index -@ ${params.nthreads} ${bam}
+    samtools index -@ ${task.cpus} ${bam}
     samtools coverage ${bam} > metrics_files/${sample_id}.se.coverageTable.tsv
-    samtools flagstat -@ ${params.nthreads} ${bam} > metrics_files/${sample_id}.se.flagstat.txt
+    samtools flagstat -@ ${task.cpus} ${bam} > metrics_files/${sample_id}.se.flagstat.txt
     """
 }
 
 // Post-alignment QC (pe)
 process FASTQC2_PE {
     tag "FASTQC (pe) on $sample_id"
+    publishDir params.outdir, mode: 'copy', pattern: 'reports/post_alignment_fastqc_reports/*'
 
     input:
     tuple val(sample_id), path(bam_pe), path(bai_pe), path(bam_se), path(bai_se), path(metrics_pe), path(metrics_se)
  
     output:
-    path "post_alignment_fastqc_logs_${sample_id}"
+    path "post_alignment_fastqc_logs_${sample_id}", emit: logs
+    path "reports/post_alignment_fastqc_reports/*"
  
     script:
     """
     TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
+    mkdir -p reports/post_alignment_fastqc_reports
     env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam_pe} ${bam_se} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
+    cp post_alignment_fastqc_logs_${sample_id}/${sample_id}*.html reports/post_alignment_fastqc_reports
     """
 }
 
 // Post-alignment QC (se)
 process FASTQC2_SE {
     tag "FASTQC (se) on $sample_id"
+    publishDir params.outdir,  mode:'copy', pattern: 'reports/post_alignment_fastqc_reports/*'
 
     input:
     tuple val(sample_id), path(bam), path(bai), path(metrics)
  
     output:
-    path "post_alignment_fastqc_logs_${sample_id}"
+    path "post_alignment_fastqc_logs_${sample_id}", emit: logs
+    path "reports/post_alignment_fastqc_reports/*"
  
     script:
     """
     TEMP=\$(mktemp -d --tmpdir=.)
     mkdir -p post_alignment_fastqc_logs_${sample_id}
+    mkdir -p reports/post_alignment_fastqc_reports
     env _JAVA_OPTIONS='-XX:-UsePerfData' fastqc ${bam} -o post_alignment_fastqc_logs_${sample_id} --dir \$TEMP
+    cp post_alignment_fastqc_logs_${sample_id}/${sample_id}*.html reports/post_alignment_fastqc_reports
     """
 }
 
@@ -537,7 +549,7 @@ process QDNA_BINS {
     """
         mkdir -p qd_bins
         CPATH=\$(pwd)
-        Rscript ${script} ${params.nthreads} ${binsize} ${params.genome} ${params.qd_mappability} ${params.qd_blacklist} \$CPATH/${bwavgbed} ${params.qd_nbams} qd_bins ${params.pairedend}
+        Rscript ${script} ${task.cpus} ${binsize} ${params.genome} ${params.qd_mappability} ${params.qd_blacklist} \$CPATH/${bwavgbed} ${params.qd_nbams} qd_bins ${params.pairedend}
     """
 }
 
@@ -559,7 +571,7 @@ process CN_QDNA1 {
     mkdir -p "relative_cns/qdnaseq/${bam_type}/${binsize}kb"
     printf '%s\n' "${bams.join('\n')}" > bamfileslist.txt
     shopt -s nocaseglob extglob
-    Rscript ${script} ${binsize}kb ${params.nthreads} relative_cns/qdnaseq/${bam_type}/${binsize}kb bamfileslist.txt ${binannos_dir}/*@(${binsize}kb|${bam_type})*@(${binsize}kb|${bam_type})*.rds
+    Rscript ${script} ${binsize}kb ${task.cpus} relative_cns/qdnaseq/${bam_type}/${binsize}kb bamfileslist.txt ${binannos_dir}/*@(${binsize}kb|${bam_type})*@(${binsize}kb|${bam_type})*.rds
     rm bamfileslist.txt
     """
 }
@@ -596,11 +608,11 @@ process WX_REF {
         fi
 
         WisecondorX newref \$NORMALS/*.se.npz wx_references/reference_${binsize}kb.se.npz \
-        --binsize ${binsize}000 --cpus ${params.nthreads} --yfrac 1
+        --binsize ${binsize}000 --cpus ${task.cpus} --yfrac 1
 
         if [ ${params.pairedend} = true ]; then
             WisecondorX newref \$NORMALS/*.pe.npz wx_references/reference_${binsize}kb.pe.npz \
-            --binsize ${binsize}000 --cpus ${params.nthreads} --yfrac 1
+            --binsize ${binsize}000 --cpus ${task.cpus} --yfrac 1
         fi
     """
 }
@@ -665,7 +677,7 @@ process RCN_TO_ACN_QDNA {
     script:
     """
     mkdir -p "absolute_cns/qdnaseq/${bam_type}/${binsize}kb"
-    Rscript ${script} ${params.nthreads} qdnaseq ${rcn_dir} ${params.genome} absolute_cns/qdnaseq/${bam_type}/${binsize}kb
+    Rscript ${script} ${task.cpus} qdnaseq ${rcn_dir} ${params.genome} absolute_cns/qdnaseq/${bam_type}/${binsize}kb
     """
 }
 
@@ -687,7 +699,94 @@ process RCN_TO_ACN_WX {
     mkdir wx_files
     cp ${rcn_dir}/*/*.txt wx_files && cp ${rcn_dir}/*/*.bed wx_files
     mkdir -p "absolute_cns/wisecondorx/${bam_type}/${binsize}kb"
-    Rscript ${script} ${params.nthreads} wx wx_files ${params.genome} absolute_cns/wisecondorx/${bam_type}/${binsize}kb
+    Rscript ${script} ${task.cpus} wx wx_files ${params.genome} absolute_cns/wisecondorx/${bam_type}/${binsize}kb
+    """
+}
+
+process ICHOR_CNA {
+    tag "ichorCNA ($bamtype) on $sample_id with bin size $binsize kb"
+    publishDir params.outdir, mode:'copy'   
+ 
+    input: 
+    tuple val(binsize), val(sample_id), val(bamtype), path(bam), path(bamindex)
+
+    output:
+    tuple path("relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.correctedDepth.txt"), path("relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.seg"), val(sample_id), val(bamtype), val(binsize), emit: results
+    path "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.cna.seg"
+    path "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.correctedDepth.txt"
+    path "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.seg"
+    path "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.seg.txt"
+    path "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/**/*"
+ 
+    script:
+    def binsize_bases = binsize.toInteger() * 1000
+    def centromere_file
+    if ("${params.genome}" == "hg19" || "${params.genome}" == "GRCh37") {
+	centromere_file = "GRCh37.p13_centromere_UCSC-gapTable.txt"
+    } else {
+	centromere_file = "GRCh38.GCA_000001405.2_centromere_acen.txt"
+    } 
+    """
+    mkdir -p "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/"
+    bamindex_file=`readlink -f "${bamindex}"`
+    bam_file=`readlink -f "${bam}"`
+    flock --verbose --wait 30 -E 3 "\${bamindex_file}.lock" cp -n \${bamindex_file} \${bamindex_file%.bai}.bam.bai    
+
+    readCounter --window "${binsize_bases}" --quality 20 \
+    --chromosome "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X" \
+    \${bam_file} > "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.readcounts.wig"
+    
+    Rscript /usr/local/bin/runIchorCNA.R \
+    --id "${sample_id}" \
+    --WIG "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}/${sample_id}.readcounts.wig" \
+    --gcWig "/usr/local/bin/ichorCNA/inst/extdata/gc_${params.genome}_${binsize}kb.wig" \
+    --mapWig "/usr/local/bin/ichorCNA/inst/extdata/map_${params.genome}_${binsize}kb.wig" \
+    --centromere "/usr/local/bin/ichorCNA/inst/extdata/${centromere_file}" \
+    --ploidy "${params.ichor_ploidy}"  --normal "${params.ichor_normal}" \
+    --maxCN "${params.ichor_maxCN}" \
+    --minMapScore 0.75 \
+    --includeHOMD True \
+    --estimateScPrevalence False --txnE 0.9999 --txnStrength 10000 \
+    --fracReadsInChrYForMale 0.002 \
+    --outDir "relative_cns/ichorCNA/${bamtype}/${binsize}kb/${sample_id}"
+    """
+}
+
+process PROCESS_ICHOR {
+    tag "Process ichor ($bamtype) on $sample_id"
+    publishDir params.outdir, mode:'copy'
+
+    input: 
+    path(script)
+    tuple path(bins_file), path(segs_file), val(sample_id), val(bamtype), val(binsize)
+
+    output:
+    tuple val(bamtype), val(binsize), path("relative_cns/ichorCNA/${bamtype}/${binsize}kb/results/${sample_id}_rCN.tsv")
+    
+    script:
+    """
+    mkdir -p "relative_cns/ichorCNA/${bamtype}/${binsize}kb/results"
+    Rscript ${script} ${sample_id} ${bins_file} ${segs_file} "relative_cns/ichorCNA/${bamtype}/${binsize}kb/results/" ${params.genome}     
+    """
+}
+
+process COMBINE_ICHOR {
+    tag "Combine ichor $bamtype $binsize"
+    publishDir params.outdir, mode:'copy'
+
+    input:
+    tuple val(bamtype), val(binsize), path(tsv_files)
+
+    output:
+    path "relative_cns/ichorCNA/combined_results/ichor_combined_${binsize}kb_${bamtype}_rCN.tsv"
+
+    script:
+    """
+    mkdir -p "relative_cns/ichorCNA/combined_results/"
+    head -n 1 ${tsv_files[0]} > "relative_cns/ichorCNA/combined_results/ichor_combined_${binsize}kb_${bamtype}_rCN.tsv"
+    for FILE in ${tsv_files}; do
+	tail -n +2 \$FILE >> "relative_cns/ichorCNA/combined_results/combined_${binsize}kb_${bamtype}_rCN.tsv"
+    done
     """
 }
 
@@ -698,6 +797,7 @@ workflow {
     acn_script_ch = file("$projectDir/scripts/runACN.R")
     qdna_bins_script_ch = file("$projectDir/scripts/gen_bin_annot.R")
     azure_script_ch = file("$projectDir/scripts/downloadAZ.R")
+    ichor_script_ch = file("$projectDir/scripts/process_ichor.R")
 
     if (params.from_azure) {
         az_ch = AZURE_DOWNLOAD(azure_script_ch)
@@ -726,9 +826,9 @@ workflow {
     // }
     
     // reads_ch.view()
-    fastqc1_ch = FASTQC1(reads_ch)
+    FASTQC1(reads_ch)
     // fastqc1_ch.view()
-    MULTIQC1(fastqc1_ch.collect())
+    MULTIQC1(FASTQC1.out.logs.collect())
 
     if (params.pairedend) {
         trimmed_ch = TRIMMOMATIC_PE(reads_ch)
@@ -754,18 +854,20 @@ workflow {
         sort_ch = SORT_INDEX_PE(align_ch)
         markdup_ch = MARKDUP_PE(sort_ch)
         indcovflag_ch = INDCOVFLAG_PE(markdup_ch)
-        fastqc2_ch = FASTQC2_PE(markdup_ch)
+        // fastqc2_ch = FASTQC2_PE(markdup_ch)
+        FASTQC2_PE(markdup_ch)
     } else {
         sort_ch = SORT_INDEX_SE(align_ch)
         markdup_ch = MARKDUP_SE(sort_ch)
         indcovflag_ch = INDCOVFLAG_SE(markdup_ch)
-        fastqc2_ch = FASTQC2_SE(markdup_ch)
+        // fastqc2_ch = FASTQC2_SE(markdup_ch)
+        FASTQC2_SE(markdup_ch)
     }
 
     if (params.runqdnaseq) {
         if (params.pairedend) {
             bamlist = markdup_ch.map { tuple -> [["pe", tuple[1]], ["se", tuple[3]]] }.flatMap().groupTuple()
-        } else {
+	} else {
             bamlist = markdup_ch.map { tuple -> ["se", tuple[1]] }.groupTuple()
         }
         if (params.qd_new_annot) {
@@ -775,8 +877,8 @@ workflow {
             RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
         } else {
             bams_ch = binsizes_ch.combine(Channel.of(params.binannos)).combine(bamlist)
-            qdna_ch = CN_QDNA1(qdnaseq_script_ch, bams_ch)
-            RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
+	    qdna_ch = CN_QDNA1(qdnaseq_script_ch, bams_ch)
+	    RCN_TO_ACN_QDNA(acn_script_ch, qdna_ch)
         }
     }
 
@@ -798,15 +900,37 @@ workflow {
         }
     }
 
+    if (params.runichor) {
+	if (params.pairedend) {
+            bamlist = markdup_ch.map { vals -> [[vals[0], "pe", vals[1], vals[2]], [vals[0], "se", vals[3], vals[4]]] }.flatMap()
+	    bams_ch = binsizes_ch.combine(bamlist).groupTuple(by: 3).transpose()
+            bams_ch_filtered = bams_ch.filter { val -> val[0] in [10, 50, 500, 1000] } 
+	    ICHOR_CNA(bams_ch_filtered)
+	    PROCESS_ICHOR(ichor_script_ch, ICHOR_CNA.out.results) 
+	    tsv_ch = PROCESS_ICHOR.out.groupTuple(by: [0, 1])
+            COMBINE_ICHOR(tsv_ch)
+	    
+        } else {
+            bamlist = markdup_ch.map { vals -> [vals[0], "se", vals[1], vals[2]] } 
+	    bams_ch = binsizes_ch.combine(bamlist).groupTuple(by: 3).transpose()
+            bams_ch_filtered = bams_ch.filter { val -> val[0] in [10, 50, 500, 1000] }
+            ICHOR_CNA(bams_ch_filtered)	    
+            PROCESS_ICHOR(ichor_script_ch, ICHOR_CNA.out.results)
+	    tsv_ch = PROCESS_ICHOR.out.groupTuple(by: [0, 1])
+	    COMBINE_ICHOR(tsv_ch)
+        }
+    }
+
     // Extract the file path from each tuple in the channel
     if (params.pairedend) {
         metrics = markdup_ch.map { tuple -> [tuple[5], tuple[6]] }
         flagstats = indcovflag_ch.map { tuple -> [tuple[2], tuple[4]] }
+        combined_ch = metrics.mix(flagstats, FASTQC2_PE.out.logs).collect()
     } else {
         metrics = markdup_ch.map { tuple -> tuple[3] }
         flagstats = indcovflag_ch.map { tuple -> tuple[2] }
+        combined_ch = metrics.mix(flagstats, FASTQC2_SE.out.logs).collect()
     }
-    combined_ch = metrics.mix(flagstats, fastqc2_ch).collect()
 
     multiqc_config_ch = Channel.fromPath(params.multiqc_config, checkIfExists: true, type: 'file')
 
