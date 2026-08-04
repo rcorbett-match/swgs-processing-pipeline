@@ -38,7 +38,7 @@ process WCX_REF_CREATE {
         WisecondorX newref \$NORMALS/*.se.npz wx_references/reference_${binsize}kb.se.npz \
         --binsize ${binsize}000 --cpus ${task.cpus} --yfrac 1
 
-        if [ ${params.pairedend} = true ]; then
+        if [ ${params.paired_end} = true ]; then
             WisecondorX newref \$NORMALS/*.pe.npz wx_references/reference_${binsize}kb.pe.npz \
             --binsize ${binsize}000 --cpus ${task.cpus} --yfrac 1
         fi
