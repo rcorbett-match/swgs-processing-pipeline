@@ -1,7 +1,5 @@
 nextflow.enable.dsl=2
 
-multiqc_config = file("$projectDir/config/multiqc_config.yaml")
-
 include { SAMTOOLS_COV_FLAGSTAT } from '../../modules/local/samtools_cov_flagstat'
 include { FASTQC_POSTALIGN } from '../../modules/local/fastqc_postalign'
 include { MULTIQC_POSTALIGN } from '../../modules/local/multiqc_postalign'
@@ -13,6 +11,8 @@ workflow POST_ALIGNMENT_QC {
 
 	main:
 	
+		multiqc_config = file("$projectDir/config/multiqc_config.yaml")
+
 		SAMTOOLS_COV_FLAGSTAT(id_bams_ch)
 		FASTQC_POSTALIGN(id_bams_ch)
 

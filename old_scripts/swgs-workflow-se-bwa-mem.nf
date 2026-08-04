@@ -22,16 +22,6 @@
  */
 
 
-log.info """\
-
-S H A L L O W   W G S   C N - C A L L I N G  -  N F    v 2.1 
-================================
-genome   : $params.refFasta
-reads    : $params.reads
-results  : $params.outdir
-"""
-
-
 // Pre-alignment QC
 process FASTQC1 {
     tag "FASTQC on $sample_id"
@@ -168,6 +158,15 @@ process MULTIQC2 {
 
 workflow {
 
+    log.info """\
+
+S H A L L O W   W G S   C N - C A L L I N G  -  N F    v 2.1
+================================
+genome   : $params.refFasta
+reads    : $params.reads
+results  : $params.outdir
+"""
+
     reads_ch = Channel
                 .fromPath( params.reads, checkIfExists: true, type: 'file' )
                 .map { file -> tuple(file.simpleName, file) }
@@ -202,6 +201,4 @@ workflow {
     // MULTIQC2(fastqc_ch.collect())
 
 }
-
-
 

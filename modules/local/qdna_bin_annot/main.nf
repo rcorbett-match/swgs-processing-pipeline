@@ -15,6 +15,6 @@ process QDNA_BINS {
     """
     mkdir -p qdna_bin_annots
     WORK_DIR=\$(pwd)
-    Rscript gen_bin_annot.R ${task.cpus} ${bin_size} ${ref_genome} ${params.qd_mappability} ${params.qd_blacklist} \$WORK_DIR/${qd_bwavgbed} ${params.qd_nbams} qdna_bin_annots ${paired_end}
+    Rscript gen_bin_annot.R ${task.cpus} ${bin_size} ${ref_genome} ${params.qd_mappability} ${params.qd_blacklist} \$WORK_DIR/${params.qd_bwgavgbed} ${params.qd_nbams} qdna_bin_annots ${paired_end}
     """
 }

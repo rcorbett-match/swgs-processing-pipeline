@@ -28,21 +28,6 @@ params.bwaThreads = 8
 params.haplotypeCallerMappingQual = 20
 params.haplotypeCallerMinBaseQual = 20
 
-log.info """\
-
-S H A L L O W   W G S   C N - C A L L I N G  -  N F    v 2.1 
-================================
-genome   : $params.refFasta
-reads    : $params.reads
-results  : $params.outdir
-"""
-
-
-reads_ch = Channel
-                .fromPath( params.reads, checkIfExists: true, type: 'file' )
-                .map { file -> tuple(file.simpleName, file) }
-
-
 // Pre-alignment QC
 process FASTQC {
     tag "FASTQC on $sample_id"
@@ -83,9 +68,20 @@ process MULTIQC {
 
 
 workflow {
+    log.info """\
+
+S H A L L O W   W G S   C N - C A L L I N G  -  N F    v 2.1
+================================
+genome   : $params.refFasta
+reads    : $params.reads
+results  : $params.outdir
+"""
+
+    reads_ch = Channel
+                .fromPath( params.reads, checkIfExists: true, type: 'file' )
+                .map { file -> tuple(file.simpleName, file) }
+
     fastqc_ch=FASTQC(reads_ch)
     // align_ch=ALIGNMENT(reads_ch)
     MULTIQC(fastqc_ch.collect())
 }
-
-

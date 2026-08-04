@@ -27,13 +27,13 @@ workflow WISECONDORX {
 		
 			wx_ref_ch = WCX_REF_CREATE(params.wcx_normals, bins_ch, params.wcx_norm_bams) 
 			wx_input_ch = wx_ref_ch.combine(bam_ls)
-			CN_WISECONDORX_RCN(wx_input_ch)
-			CN_WISECONDORX_ACN(CN_WISECONDORX_RCN.out)
+			CN_WISECONDORX_RCN(wx_input_ch, params.output_directory)
+			CN_WISECONDORX_ACN(CN_WISECONDORX_RCN.out[0], CN_WISECONDORX_RCN.out[1], CN_WISECONDORX_RCN.out[2])
 
         } else {
 
 			wx_input_ch = bins_ch.combine(Channel.of(wcx_ref)).combine(bam_ls)
             CN_WISECONDORX_RCN(wx_input_ch, params.output_directory)
-            CN_WISECONDORX_ACN(CN_WISECONDORX_RCN.out)
+            CN_WISECONDORX_ACN(CN_WISECONDORX_RCN.out[0], CN_WISECONDORX_RCN.out[1], CN_WISECONDORX_RCN.out[2])
         }
 }

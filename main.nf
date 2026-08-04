@@ -11,5 +11,5 @@ workflow {
     reference genome = ${params.reference_genome_version}
     """
 
-    WGS_QC_PIPELINE()
+    SWGS_QC_PIPELINE()
 }
