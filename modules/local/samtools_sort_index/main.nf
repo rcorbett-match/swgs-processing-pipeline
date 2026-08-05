@@ -3,7 +3,7 @@ process SAMTOOLS_SORT_INDEX {
 	container 'docker://staphb/samtools:1.19'
 	cpus 8
 	memory '32 G'
-	time '2h'
+	time '24h'
 	
 	input: 
 	tuple val(sample_id), path(sam)
